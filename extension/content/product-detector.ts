@@ -25,7 +25,7 @@ import {
   isCandidateFashionImage,
   extractBestImageUrl,
 } from "./generic-product-detector.js";
-import { attachTryOnButton, attachCornerFloatingBadge } from "./tryon-button.js";
+import { attachTryOnButton, attachCornerFloatingBadge, attachSideFloatingDock } from "./tryon-button.js";
 import { extractProductFromElement } from "./product-extractor.js";
 import { isGoogleImagesPage, initGoogleImagesScanner } from "./google-images-adapter.js";
 
@@ -40,6 +40,26 @@ const logger = new Logger("ProductDetector");
   let activeProduct: Product | null = null;
   let hasEvaluatedPage = false;
 
+  // Suppress third-party / competing try-on widgets (Anywear / Decart)
+  function suppressCompetitorWidgets() {
+    const competitorSelectors = [
+      "#__decart-tryon-widget",
+      "#__decart-pill-btn",
+      ".vton-btn",
+      "[id*='decart']",
+      "[class*='anywear']",
+      "[id*='anywear']",
+    ];
+    competitorSelectors.forEach((sel) => {
+      document.querySelectorAll(sel).forEach((node) => {
+        try {
+          (node as HTMLElement).style.setProperty("display", "none", "important");
+          node.remove();
+        } catch {}
+      });
+    });
+  }
+
   // Google Search & Google Images Dedicated Scanner
   const isGoogle = location.hostname.toLowerCase().includes("google.");
   if (isGoogle || isGoogleImagesPage()) {
@@ -47,6 +67,26 @@ const logger = new Logger("ProductDetector");
     initGoogleImagesScanner(handleTryOnClick);
     return;
   }
+
+  // Initial suppression and side dock attachment
+  suppressCompetitorWidgets();
+  attachSideFloatingDock(() => {
+    const prod = activeProduct || getHeroProduct() || {
+      id: `prod_dock_${Date.now()}`,
+      name: document.title.split(/[-|·]/)[0].trim() || "Detected Apparel",
+      brand: location.hostname.replace("www.", "").split(".")[0].toUpperCase(),
+      imageUrl: "",
+      productUrl: location.href,
+      pageUrl: location.href,
+      category: "upper_body",
+      isFashion: true,
+      availableSizes: ["S", "M", "L", "XL"],
+      outOfStockSizes: [],
+      confidence: 1.0,
+      detectionSource: "dom-heuristic" as const,
+    };
+    handleTryOnClick(prod);
+  });
 
   const intersectionObserver = new IntersectionObserver(
     (entries) => {
@@ -64,6 +104,7 @@ const logger = new Logger("ProductDetector");
   );
 
   function scanDOM(root: Document | HTMLElement = document) {
+    suppressCompetitorWidgets();
     // 1. Scan <img> elements
     const images = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
     images.forEach((img) => {
@@ -148,7 +189,7 @@ const logger = new Logger("ProductDetector");
     }
 
     // Largest candidate on page fallback
-    const allImages = Array.from(document.querySelectorAll<HTMLElement>("img, [style*='background-image']"));
+    const allImages = Array.from(document.querySelectorAll<HTMLElement>("img, [style*='background-image'], .image-grid-image, .image-grid-col"));
     const candidates = allImages.filter(isCandidateFashionImage);
     if (candidates.length > 0) {
       const best = candidates[0];

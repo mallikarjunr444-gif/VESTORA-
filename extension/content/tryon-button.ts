@@ -129,3 +129,37 @@ export function attachCornerFloatingBadge(product: Product, onTryClick: (product
   document.body.appendChild(badge);
   activeCornerBadge = badge;
 }
+
+let activeSideDock: HTMLElement | null = null;
+
+/**
+ * Attaches a sleek, docked side trigger tab on the edge of the viewport.
+ * Directly replaces any competing sidebar buttons with VESTORA's branded virtual try-on.
+ */
+export function attachSideFloatingDock(onTryClick: () => void): void {
+  if (activeSideDock || document.getElementById("vestora-floating-dock")) return;
+
+  const dock = document.createElement("div");
+  dock.id = "vestora-floating-dock";
+  dock.className = "vestora-floating-dock";
+  dock.setAttribute("role", "button");
+  dock.setAttribute("aria-label", "Open VESTORA Live Virtual Try-On");
+  dock.title = "VESTORA — Live AI Virtual Try-On";
+
+  dock.innerHTML = `
+    <div class="vestora-dock-handle">
+      <span class="vestora-dock-sparkle">✦</span>
+      <span class="vestora-dock-text">VESTORA</span>
+      <span class="vestora-dock-sub">Try-On</span>
+    </div>
+  `;
+
+  dock.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onTryClick();
+  });
+
+  document.body.appendChild(dock);
+  activeSideDock = dock;
+}

@@ -100,6 +100,16 @@ export function extractBestImageUrl(el: HTMLElement): string {
     if (match && match[1]) return upgradeImageUrl(match[1]);
   }
 
+  // Look for nested background image container (e.g. Myntra .image-grid-col > .image-grid-image)
+  const nestedBgEl = el.querySelector<HTMLElement>("[style*='background-image'], .image-grid-image");
+  if (nestedBgEl) {
+    const nBg = nestedBgEl.style?.backgroundImage || window.getComputedStyle(nestedBgEl).backgroundImage;
+    if (nBg && nBg.startsWith("url(")) {
+      const match = nBg.match(/url\(['"]?(.*?)['"]?\)/i);
+      if (match && match[1]) return upgradeImageUrl(match[1]);
+    }
+  }
+
   // Look for nested img inside wrapper
   const nestedImg = el.querySelector("img");
   if (nestedImg) {

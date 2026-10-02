@@ -409,6 +409,16 @@ export function extractBestImageUrl(el: HTMLElement): string {
     if (match && match[1]) return upgradeGenericImageUrl(match[1]);
   }
 
+  // Nested element with background-image (e.g. Myntra .image-grid-col > .image-grid-image)
+  const nestedBgEl = el.querySelector<HTMLElement>("[style*='background-image'], .image-grid-image");
+  if (nestedBgEl) {
+    const nBg = nestedBgEl.style?.backgroundImage || window.getComputedStyle(nestedBgEl).backgroundImage;
+    if (nBg && nBg.startsWith("url(")) {
+      const match = nBg.match(/url\(['"]?(.*?)['"]?\)/i);
+      if (match && match[1]) return upgradeGenericImageUrl(match[1]);
+    }
+  }
+
   const nestedImg = el.querySelector("img");
   if (nestedImg) return extractBestImageUrl(nestedImg);
 
@@ -500,8 +510,8 @@ export function upgradeGenericImageUrl(url: string): string {
 
 export function isCandidateFashionImage(el: HTMLElement): boolean {
   const rect = el.getBoundingClientRect();
-  const width = rect.width || (el as HTMLImageElement).naturalWidth || (el as HTMLImageElement).width || 0;
-  const height = rect.height || (el as HTMLImageElement).naturalHeight || (el as HTMLImageElement).height || 0;
+  const width = rect.width || el.offsetWidth || (el as HTMLImageElement).naturalWidth || (el as HTMLImageElement).width || 0;
+  const height = rect.height || el.offsetHeight || (el.parentElement?.offsetHeight || 0) || (el as HTMLImageElement).naturalHeight || (el as HTMLImageElement).height || 0;
 
   // Minimum dimensions for wearable garments (avoids tiny icons and thumbnails)
   if (width < 180 || height < 180) return false;

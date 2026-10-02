@@ -3,23 +3,24 @@
 
 .vestora-tryon-btn {
   position: absolute !important;
-  top: 10px !important;
-  left: 10px !important;
+  bottom: 16px !important;
+  left: 16px !important;
+  top: auto !important;
   z-index: 2147483640 !important;
   display: inline-flex !important;
   align-items: center !important;
-  gap: 6px !important;
-  padding: 7px 14px !important;
+  gap: 7px !important;
+  padding: 8px 16px !important;
   border-radius: 9999px !important;
-  background: rgba(13, 15, 20, 0.88) !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
-  border: 1px solid rgba(255, 255, 255, 0.18) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 14px rgba(139, 92, 246, 0.3) !important;
+  background: rgba(13, 15, 20, 0.92) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  border: 1px solid rgba(139, 92, 246, 0.45) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 16px rgba(139, 92, 246, 0.35) !important;
   color: #ffffff !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
   font-size: 11px !important;
-  font-weight: 600 !important;
+  font-weight: 700 !important;
   letter-spacing: 0.04em !important;
   cursor: pointer !important;
   user-select: none !important;
@@ -332,5 +333,82 @@
 .vestora-google-tryon-pill .vestora-btn-sparkle {
   color: #fbbf24 !important;
   font-size: 12px !important;
+}
+
+/* ─── VESTORA Floating Side Dock (Right Viewport Edge) ─── */
+.vestora-floating-dock {
+  position: fixed !important;
+  right: 0 !important;
+  top: 38% !important;
+  z-index: 2147483642 !important;
+  display: flex !important;
+  align-items: center !important;
+  background: rgba(13, 16, 25, 0.94) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(139, 92, 246, 0.5) !important;
+  border-right: none !important;
+  border-radius: 24px 0 0 24px !important;
+  padding: 9px 14px 9px 12px !important;
+  gap: 8px !important;
+  box-shadow: -4px 6px 24px rgba(0, 0, 0, 0.5), 0 0 18px rgba(139, 92, 246, 0.4) !important;
+  color: #ffffff !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease, border-color 0.25s ease !important;
+  transform: translateX(0) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+.vestora-floating-dock:hover {
+  transform: translateX(-4px) !important;
+  border-color: rgba(167, 139, 250, 0.85) !important;
+  box-shadow: -6px 8px 30px rgba(0, 0, 0, 0.65), 0 0 26px rgba(139, 92, 246, 0.6) !important;
+}
+
+.vestora-dock-handle {
+  display: flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+}
+
+.vestora-dock-sparkle {
+  color: #c084fc !important;
+  font-size: 14px !important;
+  animation: vestora-pulse 2s infinite ease-in-out !important;
+}
+
+.vestora-dock-text {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.08em !important;
+  color: #ffffff !important;
+  text-transform: uppercase !important;
+}
+
+.vestora-dock-sub {
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  color: #c084fc !important;
+  padding-left: 6px !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.25) !important;
+}
+
+/* ─── Suppress Anywear / Decart Competitor Injections ─── */
+#__decart-tryon-widget,
+#__decart-pill-btn,
+.__decart-tryon-widget,
+.vton-btn,
+[id*="decart"],
+[class*="decart"],
+[id*="anywear"],
+[class*="anywear"] {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
