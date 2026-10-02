@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>VESTORA Live Try-On</title>
+  <link rel="stylesheet" href="tryon.css" />
+</head>
+<body>
+  <div id="vestora-tryon-root" class="tryon-root">
+
+    <!-- ── Top Bar ── -->
+    <header class="tryon-topbar">
+      <div class="topbar-brand">
+        <img src="../assets/logo/vestora-logo.png" alt="VESTORA" class="topbar-logo" />
+        <span class="topbar-badge">LIVE</span>
+      </div>
+      <div class="topbar-actions">
+        <button id="btn-flip-camera" class="topbar-btn" aria-label="Flip Camera" title="Flip Camera">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"/><path d="M8 21H3v-5"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+        </button>
+        <button id="btn-screenshot" class="topbar-btn" aria-label="Take Screenshot" title="Screenshot">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+        <button id="btn-close-tryon" class="topbar-btn topbar-btn-close" aria-label="Close" title="Close">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- ── Camera + Overlay Canvas Viewport ── -->
+    <main class="tryon-viewport">
+      <!-- Camera feed -->
+      <video id="camera-feed" class="camera-video" autoplay playsinline muted></video>
+      <!-- Garment overlay canvas (same dimensions, layered on top) -->
+      <canvas id="garment-canvas" class="garment-canvas"></canvas>
+
+      <!-- Body detection indicator -->
+      <div id="body-detection-indicator" class="body-detect-indicator hidden">
+        <div class="body-detect-ring"></div>
+        <span class="body-detect-label">Detecting body…</span>
+      </div>
+
+      <!-- Garment loading spinner -->
+      <div id="garment-loader" class="garment-loader hidden">
+        <div class="loader-spinner"></div>
+        <span class="loader-label">Loading garment…</span>
+      </div>
+
+      <!-- FPS / Performance HUD (debug) -->
+      <div id="perf-hud" class="perf-hud hidden">
+        <span id="perf-fps">-- FPS</span>
+        <span id="perf-latency">-- ms</span>
+      </div>
+    </main>
+
+    <!-- ── Bottom Panel: Size Engine + Product Info ── -->
+    <footer class="tryon-bottom-panel">
+      <!-- Product info strip -->
+      <div class="product-info-strip">
+        <img id="product-thumb" class="product-thumb" src="" alt="Product" />
+        <div class="product-details">
+          <p id="product-name" class="product-name">No product selected</p>
+          <p id="product-category" class="product-category">--</p>
+        </div>
+      </div>
+
+      <!-- Integrated Size Engine -->
+      <div class="size-engine-panel">
+        <div class="size-engine-header">
+          <span class="size-engine-icon">📐</span>
+          <span class="size-engine-title">AI Size Recommendation</span>
+        </div>
+        <div class="size-engine-body">
+          <!-- Body measurements (auto-detected) -->
+          <div class="measurement-grid">
+            <div class="measurement-item">
+              <span class="measurement-label">Shoulder</span>
+              <span id="meas-shoulder" class="measurement-value">--</span>
+            </div>
+            <div class="measurement-item">
+              <span class="measurement-label">Chest</span>
+              <span id="meas-chest" class="measurement-value">--</span>
+            </div>
+            <div class="measurement-item">
+              <span class="measurement-label">Waist</span>
+              <span id="meas-waist" class="measurement-value">--</span>
+            </div>
+            <div class="measurement-item">
+              <span class="measurement-label">Torso</span>
+              <span id="meas-torso" class="measurement-value">--</span>
+            </div>
+          </div>
+          <!-- Recommended size -->
+          <div class="recommended-size">
+            <span class="rec-label">Recommended Size</span>
+            <div id="recommended-size-value" class="rec-value">--</div>
+          </div>
+          <!-- Available sizes -->
+          <div class="available-sizes">
+            <span class="sizes-label">Available Sizes</span>
+            <div id="size-options" class="sizes-row">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Privacy + branding footer -->
+      <div class="tryon-footer">
+        <span class="footer-privacy">🔒 All processing is local</span>
+        <span class="footer-brand">VESTORA v1.0</span>
+      </div>
+    </footer>
+  </div>
+
+  <script type="module" src="tryon.js"></script>
+</body>
+</html>

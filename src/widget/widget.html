@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VESTORA AI Fitting Room</title>
+  <link rel="stylesheet" href="widget.css" />
+</head>
+<body>
+  <div id="widget-container">
+    <!-- Header -->
+    <header id="widget-header">
+      <div class="header-left">
+        <img src="icons/vestora-logo.png" alt="VESTORA" class="vestora-header-logo" />
+        <div id="live-indicator" class="live-badge">
+          <span class="pulse-dot"></span>
+          <span id="live-text">STANDBY</span>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <!-- Session Countdown Timer -->
+        <div id="session-timer" class="timer-badge" title="Session time remaining">
+          <svg class="timer-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+          <span id="timer-display">05:00</span>
+        </div>
+
+        <button id="btn-mirror" class="header-btn" title="Mirror Camera" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/>
+          </svg>
+        </button>
+
+        <button id="btn-minimize" class="header-btn" title="Minimize" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Live Stage -->
+    <main id="stage">
+      <!-- Live Video Feed -->
+      <video id="local-video" autoplay playsinline muted></video>
+
+      <!-- VESTORA Hardware-Accelerated Try-On Canvas (Real-Time Render Surface) -->
+      <canvas id="tryon-canvas"></canvas>
+
+      <!-- Top HUD: Live Body Measurements & Person Tracking Status -->
+      <div id="tracking-hud" class="hud-bar">
+        <div class="hud-status">
+          <span class="status-icon">✓</span>
+          <span id="detection-status">Person detected</span>
+        </div>
+        <div class="hud-measurements" id="measurements-pill" title="Click to calibrate height">
+          <span class="m-item">Sh: <strong id="val-shoulder">--</strong></span>
+          <span class="m-sep">·</span>
+          <span class="m-item">Ch: <strong id="val-chest">--</strong></span>
+          <span class="m-sep">·</span>
+          <span class="m-item">W: <strong id="val-waist">--</strong></span>
+          <button id="btn-calibrate-height" class="m-calib-btn" title="Calibrate height">174cm ✎</button>
+        </div>
+      </div>
+
+      <!-- Height Calibration Drawer (Overlay) -->
+      <div id="calibration-drawer" class="calib-drawer hidden">
+        <div class="calib-header">
+          <span>Camera Calibration (Reference Height)</span>
+          <button id="btn-close-calib" type="button" class="calib-close">✕</button>
+        </div>
+        <div class="calib-slider-row">
+          <span id="calib-height-label">174 cm</span>
+          <input type="range" id="height-slider" min="145" max="205" value="174" step="1" />
+        </div>
+        <span class="calib-hint">Adjusting your height calibrates real-world centimeter measurements.</span>
+      </div>
+
+      <!-- Framing Silhouette Guide Overlay -->
+      <div id="framing-overlay" class="visible">
+        <div class="framing-guide-box">
+          <svg class="silhouette-svg" viewBox="0 0 200 280" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+            <path class="silhouette-path" d="
+              M 100 40 
+              C 85 40, 75 52, 75 68 
+              C 75 84, 85 96, 100 96 
+              C 115 96, 125 84, 125 68 
+              C 125 52, 115 40, 100 40 Z
+              M 88 100 
+              L 65 115 
+              C 45 125, 25 150, 20 200 
+              L 20 280 
+              L 180 280 
+              L 180 200 
+              C 175 150, 155 125, 135 115 
+              L 112 100
+            " />
+          </svg>
+          <div class="framing-hint">
+            <span class="framing-hint-title">Step Back & Align</span>
+            <span class="framing-hint-sub">Fit shoulders inside the outline</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- VESTORA Neural Fitting Shimmer Overlay -->
+      <div id="shimmer-overlay">
+        <div class="shimmer-card">
+          <div class="shimmer-spinner"></div>
+          <span class="shimmer-text">VESTORA AI Measuring & Fitting…</span>
+        </div>
+      </div>
+
+      <!-- Integrated Live Size Engine & Fit HUD (Docked at Bottom) -->
+      <div id="size-engine-dock" class="hidden">
+        <!-- Top Row: Recommended Size & Confidence -->
+        <div class="size-dock-header">
+          <div class="product-badge-wrap">
+            <img id="garment-thumb" src="" alt="Active garment" />
+            <div class="product-title-wrap">
+              <span id="product-name" class="product-name">Selected Garment</span>
+              <span class="recommendation-badge">
+                VESTORA RECOMMENDS: <strong id="rec-size-badge">★ M</strong>
+                <span id="rec-confidence" class="rec-confidence">(92% match)</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Interactive Size Switcher Pills -->
+        <div class="size-pills-row" id="size-pills-container">
+          <!-- Dynamically populated buttons e.g. S, M (Recommended), L, XL -->
+        </div>
+
+        <!-- Real-Time Fit Breakdown Breakdown -->
+        <div class="fit-breakdown-card" id="fit-breakdown">
+          <div class="fit-row">
+            <div class="fit-col">
+              <span class="fit-label">Shoulder</span>
+              <span id="fit-shoulder-val" class="fit-val val-good">Good ✓</span>
+            </div>
+            <div class="fit-col">
+              <span class="fit-label">Chest</span>
+              <span id="fit-chest-val" class="fit-val val-good">Ideal ✓</span>
+            </div>
+            <div class="fit-col">
+              <span class="fit-label">Length</span>
+              <span id="fit-length-val" class="fit-val val-good">Standard ✓</span>
+            </div>
+          </div>
+          <div class="fit-summary-text" id="fit-summary-text">
+            Best estimated fit for your measurements.
+          </div>
+        </div>
+      </div>
+
+      <!-- Garment Swapped Toast -->
+      <div id="swap-toast">
+        <span class="toast-sparkle">✦</span>
+        <span id="toast-text">Garment swapped!</span>
+      </div>
+
+      <!-- Camera Blocked Error State -->
+      <div id="camera-error-overlay" class="state-overlay">
+        <div class="state-card">
+          <div class="state-icon error-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 1l22 22M21 21H3a2 2 0 01-2-2V8a2 2 0 012-2h3l2-3h6l2 3h1m4 4v7a2 2 0 01-2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+          </div>
+          <h2 class="state-title">Camera Blocked</h2>
+          <p class="state-desc">Camera access is needed for live try-on. Please click the camera icon in your browser address bar and choose "Allow".</p>
+          <button id="btn-retry-camera" class="state-btn" type="button">Allow Camera & Retry</button>
+        </div>
+      </div>
+
+      <!-- Session Time Cap Reached Overlay -->
+      <div id="session-ended-overlay" class="state-overlay">
+        <div class="state-card">
+          <div class="state-icon success-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 14 14"></polyline>
+            </svg>
+          </div>
+          <h2 class="state-title">Session Complete</h2>
+          <p class="state-desc">Your 5-minute virtual try-on session has ended. Ready to try more looks?</p>
+          <button id="btn-restart-session" class="state-btn" type="button">✦ Start New Session</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="widget.js"></script>
+</body>
+</html>

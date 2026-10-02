@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VESTORA</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header with Official VESTORA Logo & Tagline -->
+    <header class="popup-header">
+      <img src="../assets/logo/vestora-logo.png" alt="VESTORA" class="brand-logo" />
+      <p class="brand-tagline">Wear What You Imagine.</p>
+    </header>
+
+    <!-- Primary Action: Try Current Product -->
+    <section class="action-section">
+      <button id="btn-try-product" class="btn-primary" type="button">
+        <span class="btn-sparkle">✦</span>
+        <span id="btn-try-text">Try Current Product</span>
+      </button>
+      <p id="detected-product-name" class="detected-product-label">No clothing selected yet</p>
+    </section>
+
+    <!-- Status Grid (PRD Section 13) -->
+    <section class="status-grid">
+      <!-- Camera Status -->
+      <div class="status-card">
+        <div class="status-title">Camera</div>
+        <div class="status-value status-ready">
+          <span class="status-dot dot-green"></span>
+          <span id="camera-status-text">Ready</span>
+        </div>
+      </div>
+
+      <!-- Performance Status -->
+      <div class="status-card">
+        <div class="status-title">Performance</div>
+        <div class="status-value status-good">
+          <span class="status-dot dot-purple"></span>
+          <span id="perf-status-text">Good</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Privacy Banner (PRD Section 13 & 25) -->
+    <section class="privacy-card">
+      <div class="privacy-header">
+        <span class="privacy-icon">🔒</span>
+        <span class="privacy-title">Privacy</span>
+      </div>
+      <p class="privacy-text">Your camera stays on your device. VESTORA processes video locally.</p>
+    </section>
+
+    <!-- Settings Accordion / Drawer (PRD Section 37) -->
+    <details class="settings-drawer">
+      <summary class="settings-summary">
+        <span>Settings</span>
+        <span class="summary-caret">›</span>
+      </summary>
+      <div class="settings-content">
+        <label class="setting-item">
+          <span>Auto-detect clothing</span>
+          <input type="checkbox" id="toggle-autodetect" checked />
+        </label>
+        <label class="setting-item">
+          <span>Show Try-On button</span>
+          <input type="checkbox" id="toggle-overlay" checked />
+        </label>
+        <label class="setting-item">
+          <span>Local processing only</span>
+          <input type="checkbox" id="toggle-privacy" checked />
+        </label>
+        <div class="setting-item">
+          <span>Performance Mode</span>
+          <select id="select-perf-mode">
+            <option value="auto">Auto (Adaptive)</option>
+            <option value="high">High Quality (60 FPS)</option>
+            <option value="balanced">Balanced (30 FPS)</option>
+            <option value="low">Performance (Lightweight)</option>
+          </select>
+        </div>
+      </div>
+    </details>
+
+    <footer class="popup-footer">
+      <span>VESTORA v1.0.0</span>
+      <span class="footer-dot">·</span>
+      <span>Manifest V3 Foundation</span>
+    </footer>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
