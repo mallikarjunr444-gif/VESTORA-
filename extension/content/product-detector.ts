@@ -40,9 +40,10 @@ const logger = new Logger("ProductDetector");
   let activeProduct: Product | null = null;
   let hasEvaluatedPage = false;
 
-  // Google Images Dedicated Scanner
-  if (isGoogleImagesPage()) {
-    logger.info("Google Images detected — activating dedicated Google Images Try-On Scanner");
+  // Google Search & Google Images Dedicated Scanner
+  const isGoogle = location.hostname.toLowerCase().includes("google.");
+  if (isGoogle || isGoogleImagesPage()) {
+    logger.info("Google Search/Images detected — activating dedicated Google Images Try-On Scanner");
     initGoogleImagesScanner(handleTryOnClick);
     return;
   }
