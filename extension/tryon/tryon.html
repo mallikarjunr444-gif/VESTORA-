@@ -13,8 +13,24 @@
     <header class="tryon-topbar">
       <div class="topbar-brand">
         <img src="../assets/logo/vestora-logo.png" alt="VESTORA" class="topbar-logo" />
-        <span class="topbar-badge">LIVE</span>
+        <span class="topbar-badge" id="topbar-live-badge">LIVE</span>
       </div>
+
+      <!-- Mode Switcher: Live Camera vs Uploaded Photo -->
+      <div class="mode-switcher" id="mode-switcher">
+        <button id="btn-mode-camera" class="mode-tab active" type="button" title="Live Webcam Try-On">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+          <span>Camera</span>
+        </button>
+        <button id="btn-mode-photo" class="mode-tab" type="button" title="Upload Photo Try-On">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          <span>Photo</span>
+        </button>
+      </div>
+
+      <!-- Hidden file input for uploading user's photo -->
+      <input type="file" id="user-photo-input" accept="image/*" style="display: none !important;" />
+
       <div class="topbar-actions">
         <!-- Grab from active store tab (Bypasses drag-and-drop restrictions on Myntra, Ajio, etc.) -->
         <button id="btn-grab-page" class="topbar-btn topbar-btn-grab" aria-label="Grab Product from Page" title="Grab clothing from active store tab (Myntra, Ajio, Zara, etc.)">
@@ -43,12 +59,24 @@
       </div>
     </header>
 
-    <!-- ── Camera + Overlay Canvas Viewport ── -->
+    <!-- ── Camera / Photo + Overlay Canvas Viewport ── -->
     <main id="tryon-viewport" class="tryon-viewport">
       <!-- Camera feed -->
       <video id="camera-feed" class="camera-video" autoplay playsinline muted></video>
+      <!-- Uploaded user photo feed (for photo mode) -->
+      <img id="user-photo-feed" class="user-photo-image hidden" alt="Uploaded User" />
       <!-- Garment overlay canvas (layered on top) -->
       <canvas id="garment-canvas" class="garment-canvas"></canvas>
+
+      <!-- Photo Upload Prompt (shown when in photo mode with no photo loaded yet) -->
+      <div id="photo-upload-prompt" class="photo-upload-prompt hidden">
+        <div class="photo-prompt-card">
+          <div class="photo-prompt-icon">📸</div>
+          <h3>Try On with Your Photo</h3>
+          <p>Upload a full-body or portrait photo to see this garment rendered on you 100% on-device.</p>
+          <button id="btn-browse-photo" class="btn-browse-photo" type="button">Select Photo</button>
+        </div>
+      </div>
 
       <!-- Drag & Drop Overlay Target (Anywear Signature Feature) -->
       <div id="drop-zone-overlay" class="drop-zone-overlay hidden">
@@ -70,6 +98,7 @@
           <div class="blocked-btn-group">
             <button id="btn-fallback-sidepanel" class="btn-fallback primary">Open in Side Panel</button>
             <button id="btn-fallback-window" class="btn-fallback secondary">Open Pop-out Window</button>
+            <button id="btn-fallback-photo" class="btn-fallback accent">Try with Uploaded Photo</button>
           </div>
         </div>
       </div>

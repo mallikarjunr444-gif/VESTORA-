@@ -56,6 +56,8 @@ const SAMPLE_GARMENTS = [
 let currentSampleIndex = 0;
 
 // ─── State ───
+let currentInputMode = "camera"; // "camera" | "photo"
+let userPhotoLoaded = false;
 let cameraStream = null;
 let currentFacing = "user"; // "user" (front) or "environment" (back)
 let animationFrameId = null;
@@ -76,8 +78,18 @@ let dragCounter = 0;
 
 // ─── DOM References ───
 const videoEl = document.getElementById("camera-feed");
+const userPhotoFeed = document.getElementById("user-photo-feed");
 const canvasEl = document.getElementById("garment-canvas");
 const ctx = canvasEl.getContext("2d", { desynchronized: true, alpha: true });
+
+// Mode Switcher Elements
+const btnModeCamera = document.getElementById("btn-mode-camera");
+const btnModePhoto = document.getElementById("btn-mode-photo");
+const userPhotoInput = document.getElementById("user-photo-input");
+const photoUploadPrompt = document.getElementById("photo-upload-prompt");
+const btnBrowsePhoto = document.getElementById("btn-browse-photo");
+const btnFallbackPhoto = document.getElementById("btn-fallback-photo");
+const topbarLiveBadge = document.getElementById("topbar-live-badge");
 
 // Topbar buttons
 const btnGrabPage = document.getElementById("btn-grab-page");
@@ -264,6 +276,18 @@ function startRenderLoop() {
     }
     lastFrameTime = timestamp;
 
+    if (currentInputMode === "photo") {
+      if (!userPhotoLoaded || !userPhotoFeed || !userPhotoFeed.complete) return;
+      const pose = estimateBasePose(canvasEl.width, canvasEl.height);
+      updateMeasurements(pose, canvasEl.width, canvasEl.height);
+      ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+      const garmentSource = processedGarmentCanvas || garmentImage;
+      if (garmentSource) {
+        renderGarmentOverlay(pose, canvasEl.width, canvasEl.height, garmentSource);
+      }
+      return;
+    }
+
     if (!isBodyDetected || !videoEl.videoWidth) return;
 
     // Run pose estimation (baseline geometric)
@@ -347,8 +371,9 @@ function renderGarmentOverlay(pose, canvasWidth, canvasHeight, garmentSource) {
   const centerX = (lShoulder.x + rShoulder.x) / 2;
   const topY = lShoulder.y - (garmentHeight * 0.08) + fitOffsetY;
 
-  // Mirror compensation for front camera
-  const drawX = currentFacing === "user"
+  // Mirror compensation for front camera only (never for uploaded photo)
+  const isMirrored = currentFacing === "user" && currentInputMode === "camera";
+  const drawX = isMirrored
     ? canvasWidth - centerX - garmentWidth / 2
     : centerX - garmentWidth / 2;
 
@@ -362,7 +387,7 @@ function renderGarmentOverlay(pose, canvasWidth, canvasHeight, garmentSource) {
   );
 
   ctx.translate(drawX + garmentWidth / 2, topY + garmentHeight / 2);
-  ctx.rotate(currentFacing === "user" ? -shoulderAngle : shoulderAngle);
+  ctx.rotate(isMirrored ? -shoulderAngle : shoulderAngle);
   ctx.translate(-(drawX + garmentWidth / 2), -(topY + garmentHeight / 2));
 
   ctx.drawImage(garmentSource, drawX, topY, garmentWidth, garmentHeight);
@@ -766,13 +791,17 @@ function takeScreenshot() {
   compositeCanvas.height = videoEl.videoHeight || 720;
   const compCtx = compositeCanvas.getContext("2d");
 
-  // Draw mirrored camera
+  // Draw background: camera feed or uploaded photo
   compCtx.save();
-  if (currentFacing === "user") {
-    compCtx.translate(compositeCanvas.width, 0);
-    compCtx.scale(-1, 1);
+  if (currentInputMode === "photo" && userPhotoFeed?.complete) {
+    compCtx.drawImage(userPhotoFeed, 0, 0, compositeCanvas.width, compositeCanvas.height);
+  } else {
+    if (currentFacing === "user") {
+      compCtx.translate(compositeCanvas.width, 0);
+      compCtx.scale(-1, 1);
+    }
+    compCtx.drawImage(videoEl, 0, 0);
   }
-  compCtx.drawImage(videoEl, 0, 0);
   compCtx.restore();
 
   // Draw garment overlay
@@ -883,6 +912,88 @@ async function grabProductFromCurrentTab() {
     });
   }
 }
+
+// ─── Mode Switching: Live Camera vs Uploaded Photo ───
+
+function switchToCameraMode() {
+  currentInputMode = "camera";
+  btnModeCamera?.classList.add("active");
+  btnModePhoto?.classList.remove("active");
+  userPhotoFeed?.classList.add("hidden");
+  photoUploadPrompt?.classList.add("hidden");
+  videoEl.classList.remove("hidden");
+
+  if (topbarLiveBadge) {
+    topbarLiveBadge.textContent = "LIVE";
+    topbarLiveBadge.style.background = "var(--v-red)";
+  }
+
+  if (!cameraStream) {
+    initCamera(currentFacing);
+  } else {
+    isBodyDetected = true;
+    startRenderLoop();
+  }
+}
+
+function switchToPhotoMode() {
+  currentInputMode = "photo";
+  btnModePhoto?.classList.add("active");
+  btnModeCamera?.classList.remove("active");
+  videoEl.classList.add("hidden");
+  cameraBlockedCard?.classList.add("hidden");
+
+  if (topbarLiveBadge) {
+    topbarLiveBadge.textContent = "PHOTO";
+    topbarLiveBadge.style.background = "#8b5cf6";
+  }
+
+  if (userPhotoLoaded && userPhotoFeed?.complete) {
+    userPhotoFeed.classList.remove("hidden");
+    photoUploadPrompt?.classList.add("hidden");
+    isBodyDetected = true;
+    startRenderLoop();
+  } else {
+    userPhotoFeed?.classList.add("hidden");
+    photoUploadPrompt?.classList.remove("hidden");
+  }
+}
+
+function handleUserPhotoUpload(file) {
+  if (!file || !file.type.startsWith("image/")) {
+    showToast("Please choose an image file (PNG, JPG, WebP)");
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target.result;
+    if (userPhotoFeed) {
+      userPhotoFeed.onload = () => {
+        userPhotoLoaded = true;
+        photoUploadPrompt?.classList.add("hidden");
+        userPhotoFeed.classList.remove("hidden");
+        isBodyDetected = true;
+        showToast("✦ Photo loaded! Virtual Try-On active.");
+        startRenderLoop();
+      };
+      userPhotoFeed.src = dataUrl;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+// Mode Switcher Listeners
+btnModeCamera?.addEventListener("click", switchToCameraMode);
+btnModePhoto?.addEventListener("click", switchToPhotoMode);
+btnBrowsePhoto?.addEventListener("click", () => userPhotoInput?.click());
+btnFallbackPhoto?.addEventListener("click", () => {
+  switchToPhotoMode();
+  userPhotoInput?.click();
+});
+userPhotoInput?.addEventListener("change", (e) => {
+  const file = e.target.files?.[0];
+  if (file) handleUserPhotoUpload(file);
+});
 
 // ─── Event Listeners ───
 
