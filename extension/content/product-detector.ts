@@ -1,12 +1,31 @@
 /**
  * VESTORA — Product Detector (Main Content Script)
- * Scans page images, injects Try-On buttons, and reports detected products (PRD Section 11 & 12).
+ * 
+ * Autonomous Generic Fashion Detection:
+ * Works on ANY shopping website (unknown Shopify, WooCommerce, Indian D2C brands,
+ * marketplaces like Myntra, Amazon, Ajio, Zara, etc.) without hardcoding domains.
+ * 
+ * Pipeline:
+ * DOM + URL
+ *   ↓
+ * 1. Product-Page Detection (assessProductPage)
+ *   ↓
+ * 2. Fashion & Garment Detection (detectHeroFashionProduct)
+ *   ↓
+ * 3. Triggers: Floating Corner Badge + In-Image "Try with VESTORA" Pills
+ *   ↓
+ * 4. Virtual Try-On Execution (Iframe / SidePanel / Window)
  */
 
 import type { ExtensionMessage, Product } from "../../shared/types/index.js";
 import { Logger } from "../../shared/utilities/logger.js";
-import { isCandidateImage, extractBestImageUrl } from "./page-adapter.js";
-import { attachTryOnButton } from "./tryon-button.js";
+import {
+  assessProductPage,
+  detectHeroFashionProduct,
+  isCandidateFashionImage,
+  extractBestImageUrl,
+} from "./generic-product-detector.js";
+import { attachTryOnButton, attachCornerFloatingBadge } from "./tryon-button.js";
 import { extractProductFromElement } from "./product-extractor.js";
 
 const logger = new Logger("ProductDetector");
@@ -15,7 +34,10 @@ const logger = new Logger("ProductDetector");
   if ((window as unknown as { __vestoraInitialized?: boolean }).__vestoraInitialized) return;
   (window as unknown as { __vestoraInitialized?: boolean }).__vestoraInitialized = true;
 
-  logger.info("VESTORA content script active on", location.hostname);
+  logger.info("VESTORA autonomous product detector active on", location.hostname);
+
+  let activeProduct: Product | null = null;
+  let hasEvaluatedPage = false;
 
   const intersectionObserver = new IntersectionObserver(
     (entries) => {
@@ -23,7 +45,7 @@ const logger = new Logger("ProductDetector");
         if (entry.isIntersecting) {
           const target = entry.target as HTMLElement;
           intersectionObserver.unobserve(target);
-          if (isCandidateImage(target)) {
+          if (isCandidateFashionImage(target)) {
             attachTryOnButton(target, handleTryOnClick);
           }
         }
@@ -33,15 +55,16 @@ const logger = new Logger("ProductDetector");
   );
 
   function scanDOM(root: Document | HTMLElement = document) {
+    // 1. Scan <img> elements
     const images = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
     images.forEach((img) => {
       if (img.complete && img.naturalWidth > 0) {
-        if (isCandidateImage(img)) attachTryOnButton(img, handleTryOnClick);
+        if (isCandidateFashionImage(img)) attachTryOnButton(img, handleTryOnClick);
       } else {
         img.addEventListener(
           "load",
           () => {
-            if (isCandidateImage(img)) attachTryOnButton(img, handleTryOnClick);
+            if (isCandidateFashionImage(img)) attachTryOnButton(img, handleTryOnClick);
           },
           { once: true }
         );
@@ -49,7 +72,7 @@ const logger = new Logger("ProductDetector");
       }
     });
 
-    // Also scan custom fashion e-commerce containers (Myntra, Ajio, Zara, Flipkart, Shein, Amazon, Shopify)
+    // 2. Scan CSS background-image containers and custom media elements
     const customSelectors = [
       "[style*='background-image']",
       ".image-grid-image",
@@ -72,62 +95,59 @@ const logger = new Logger("ProductDetector");
 
     const customElements = Array.from(root.querySelectorAll<HTMLElement>(customSelectors));
     customElements.forEach((el) => {
-      if (isCandidateImage(el)) {
+      if (isCandidateFashionImage(el)) {
         attachTryOnButton(el, handleTryOnClick);
       }
     });
+
+    // 3. Autonomous Page Evaluation (PDP Check + Corner Floating Badge)
+    if (!hasEvaluatedPage) {
+      evaluatePageForFashionPDP();
+    }
   }
 
-  let activeProduct: Product | null = null;
+  function evaluatePageForFashionPDP() {
+    const assessment = assessProductPage(document, location);
+    if (assessment.isProductPage) {
+      logger.info("Generic PDP detected with confidence:", assessment.confidence, "Signals:", assessment.signals);
+
+      const detected = detectHeroFashionProduct(document, location);
+      if (detected && detected.imageUrl) {
+        activeProduct = detected;
+        hasEvaluatedPage = true;
+
+        // Notify background worker & store badge
+        chrome.runtime.sendMessage({
+          type: "VESTORA_PRODUCT_DETECTED",
+          payload: detected,
+        }).catch(() => {});
+
+        // Attach autonomous floating corner badge
+        attachCornerFloatingBadge(detected, handleTryOnClick);
+      }
+    }
+  }
 
   function getHeroProduct(): Product | null {
     if (activeProduct) return activeProduct;
 
-    const heroSelectors = [
-      ".image-grid-image img",
-      ".image-grid-image",
-      ".pdp-image-container img",
-      "#landingImage",
-      "#imgBlkFront",
-      ".product__media img",
-      ".product-single__photo img",
-      ".prod-image img",
-      "._396cs4",
-    ];
-
-    for (const sel of heroSelectors) {
-      const el = document.querySelector<HTMLElement>(sel);
-      if (el && isCandidateImage(el)) {
-        const imgUrl = extractBestImageUrl(el);
-        if (imgUrl) {
-          activeProduct = extractProductFromElement(el, imgUrl);
-          return activeProduct;
-        }
-      }
+    // Use autonomous generic detector first
+    const detected = detectHeroFashionProduct(document, location);
+    if (detected && detected.imageUrl) {
+      activeProduct = detected;
+      return detected;
     }
 
-    // OpenGraph fallback
-    const ogImg = document.querySelector('meta[property="og:image"]')?.getAttribute("content");
-    const ogTitle = document.querySelector('meta[property="og:title"]')?.getAttribute("content") || document.title;
-    if (ogImg && !ogImg.includes("logo") && !ogImg.includes("favicon")) {
-      return {
-        id: `hero_${Date.now()}`,
-        name: ogTitle.split(/[-|·]/)[0].trim(),
-        imageUrl: ogImg,
-        productUrl: location.href,
-        pageUrl: location.href,
-        category: "upper_body",
-        availableSizes: ["XS", "S", "M", "L", "XL", "XXL"],
-      };
-    }
-
-    // Largest candidate on page
+    // Largest candidate on page fallback
     const allImages = Array.from(document.querySelectorAll<HTMLElement>("img, [style*='background-image']"));
-    const candidates = allImages.filter((el) => isCandidateImage(el));
+    const candidates = allImages.filter(isCandidateFashionImage);
     if (candidates.length > 0) {
       const best = candidates[0];
       const imgUrl = extractBestImageUrl(best);
-      if (imgUrl) return extractProductFromElement(best, imgUrl);
+      if (imgUrl) {
+        activeProduct = extractProductFromElement(best, imgUrl);
+        return activeProduct;
+      }
     }
 
     return null;
@@ -142,7 +162,7 @@ const logger = new Logger("ProductDetector");
       type: "VESTORA_PRODUCT_DETECTED",
       payload: product,
     };
-    chrome.runtime.sendMessage(message);
+    chrome.runtime.sendMessage(message).catch(() => {});
 
     // Show feedback toast
     const toast = document.createElement("div");
@@ -155,13 +175,13 @@ const logger = new Logger("ProductDetector");
       setTimeout(() => toast.remove(), 400);
     }, 2800);
 
-    // Open the try-on widget
+    // Open try-on widget
     openTryOnWidget(product);
   }
 
   function openTryOnWidget(product: Product) {
     // Remove existing widget if open
-    const existing = document.getElementById("vestora-tryon-frame");
+    const existing = document.getElementById("vestora-tryon-overlay");
     if (existing) existing.remove();
 
     // Create fullscreen overlay container
@@ -198,10 +218,8 @@ const logger = new Logger("ProductDetector");
       background: #0a0c12 !important;
     `;
 
-    // Set the iframe source to the try-on widget page
     iframe.src = chrome.runtime.getURL("tryon/tryon.html");
 
-    // Pass product data to iframe once loaded
     iframe.addEventListener("load", () => {
       if (iframe.contentWindow) {
         iframe.contentWindow.postMessage({
@@ -214,12 +232,10 @@ const logger = new Logger("ProductDetector");
     overlay.appendChild(iframe);
     document.body.appendChild(overlay);
 
-    // Animate in
     requestAnimationFrame(() => {
       overlay.style.opacity = "1";
     });
 
-    // Prevent body scroll while widget is open
     document.body.style.overflow = "hidden";
 
     // Listen for messages from widget
@@ -251,25 +267,33 @@ const logger = new Logger("ProductDetector");
           overlay.remove();
           document.body.style.overflow = "";
         }, 300);
-        window.removeEventListener("message", closeHandler);
+        window.removeEventListener("message", widgetMessageHandler);
         document.removeEventListener("keydown", escHandler);
       }
     };
     document.addEventListener("keydown", escHandler);
   }
 
-  // Initial Scan & Mutation Observer
+  // Initial scan
   scanDOM(document);
 
+  // MutationObserver for dynamic SPAs (Shopify Hydrogen, Next.js, Nuxt, React, Angular)
   const mutationObserver = new MutationObserver(() => {
     scanDOM(document);
   });
   mutationObserver.observe(document.body, { childList: true, subtree: true });
 
-  // Listen for messages from popup / sidepanel
+  // Periodic evaluation for slow/lazy hydration
+  setTimeout(() => {
+    if (!hasEvaluatedPage) {
+      evaluatePageForFashionPDP();
+    }
+  }, 1500);
+
+  // Listen for extension commands (Popup / SidePanel / ContextMenu)
   chrome.runtime.onMessage.addListener((msg: ExtensionMessage, _sender, sendResponse) => {
     if (msg && msg.type === "VESTORA_OPEN_TRYON") {
-      logger.info("Received request to open try-on from popup");
+      logger.info("Received request to open try-on from popup/action");
       const prod = activeProduct || getHeroProduct();
       if (prod) {
         openTryOnWidget(prod);
@@ -277,7 +301,7 @@ const logger = new Logger("ProductDetector");
       } else {
         const images = Array.from(document.querySelectorAll<HTMLImageElement>("img"));
         for (const img of images) {
-          if (isCandidateImage(img)) {
+          if (isCandidateFashionImage(img)) {
             const imageUrl = extractBestImageUrl(img);
             const product = extractProductFromElement(img, imageUrl);
             openTryOnWidget(product);
@@ -295,16 +319,4 @@ const logger = new Logger("ProductDetector");
       return false;
     }
   });
-
-  // Auto-detect and cache active product for extension action / side panel on PDPs
-  setTimeout(() => {
-    const hero = getHeroProduct();
-    if (hero) {
-      chrome.runtime.sendMessage({
-        type: "VESTORA_PRODUCT_DETECTED",
-        payload: hero,
-      }).catch(() => {});
-    }
-  }, 1200);
 })();
-

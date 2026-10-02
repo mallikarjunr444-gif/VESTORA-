@@ -1,6 +1,10 @@
 /**
- * VESTORA — Try-On Button Component
- * Injects non-destructive "Try with VESTORA" overlays on candidate product images (PRD Section 12).
+ * VESTORA — Try-On UI Triggers (In-Image Overlay + Floating Corner Badge)
+ * 
+ * Provides frictionless, unblockable triggers across ANY shopping website:
+ * 1. Floating In-Image Pill ("✦ Try with VESTORA") over candidate garment images.
+ * 2. Universal Drag-and-Drop unblocker (attaches HD image URLs to dataTransfer).
+ * 3. Autonomous Floating Corner Badge on detected fashion PDPs.
  */
 
 import type { Product } from "../../shared/types/index.js";
@@ -9,6 +13,9 @@ import { extractProductFromElement } from "./product-extractor.js";
 
 const processedElements = new WeakSet<HTMLElement>();
 
+/**
+ * Injects non-destructive "✦ Try with VESTORA" hover pill on candidate fashion image elements.
+ */
 export function attachTryOnButton(el: HTMLElement, onTryClick: (product: Product) => void): void {
   if (processedElements.has(el)) return;
   processedElements.add(el);
@@ -71,4 +78,54 @@ export function attachTryOnButton(el: HTMLElement, onTryClick: (product: Product
   }, { passive: true });
 
   anchor.appendChild(btn);
+}
+
+let activeCornerBadge: HTMLElement | null = null;
+
+/**
+ * Attaches a sleek, glassmorphic floating corner badge on detected fashion PDPs.
+ * Appears automatically on ANY website when an apparel item is recognized.
+ */
+export function attachCornerFloatingBadge(product: Product, onTryClick: (product: Product) => void): void {
+  if (activeCornerBadge || document.getElementById("vestora-corner-badge")) return;
+  if (!product || !product.imageUrl || !product.isFashion) return;
+
+  const badge = document.createElement("div");
+  badge.id = "vestora-corner-badge";
+  badge.className = "vestora-corner-badge";
+  badge.setAttribute("role", "button");
+  badge.setAttribute("aria-label", "VESTORA Virtual Try-On Detected Item");
+
+  const brandText = product.brand || "Fashion Store";
+  const nameText = product.name || "Clothing Item";
+  const categoryText = product.category || "Apparel";
+
+  badge.innerHTML = `
+    <img src="${product.imageUrl}" alt="${nameText}" class="vestora-badge-thumb" />
+    <div class="vestora-badge-info">
+      <div class="vestora-badge-title-row">
+        <span class="vestora-badge-tag">${categoryText}</span>
+      </div>
+      <span class="vestora-badge-name" title="${nameText}">${nameText}</span>
+    </div>
+    <button class="vestora-badge-cta" type="button">
+      <span>✦ Try On</span>
+    </button>
+    <button class="vestora-badge-close" type="button" aria-label="Dismiss">✕</button>
+  `;
+
+  // Click on badge or CTA launches Try-On
+  badge.addEventListener("click", (e) => {
+    const target = e.target as HTMLElement;
+    if (target.closest(".vestora-badge-close")) {
+      e.stopPropagation();
+      badge.remove();
+      activeCornerBadge = null;
+      return;
+    }
+    onTryClick(product);
+  });
+
+  document.body.appendChild(badge);
+  activeCornerBadge = badge;
 }
