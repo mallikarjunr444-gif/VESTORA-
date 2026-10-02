@@ -6,13 +6,22 @@
 
 // ── 1. Product Detection Types (PRD Section 11) ──
 export interface Product {
+  id?: string;
   name: string;
   imageUrl: string;
   productUrl: string;
   pageUrl: string;
   category?: string;
+  brand?: string;
+  price?: string;
+  currency?: string;
   color?: string;
   availableSizes?: string[];
+  outOfStockSizes?: string[];
+  secondaryImages?: string[];
+  isFashion?: boolean;
+  confidence?: number;
+  detectionSource?: "json-ld" | "microdata" | "opengraph" | "dom-heuristic" | "context-menu" | "fallback";
 }
 
 // ── 2. Body Tracking & Pose Types (PRD Section 16) ──
