@@ -35,21 +35,28 @@ export function extractProductFromElement(targetEl: HTMLElement, imageUrl: strin
     name = heading?.textContent?.trim() || ogTitle || alt || document.title.split(/[-|·]/)[0].trim();
   }
 
-  // 3. Category Heuristic
+  // 3. Category Heuristic (Universal Global + Indian Ethnic Apparel)
   const text = `${name} ${location.pathname}`.toLowerCase();
   if (/kurta|kurti/i.test(text)) category = "Kurta";
   else if (/saree|sari/i.test(text)) category = "Saree";
+  else if (/lehenga|ghagra|choli/i.test(text)) category = "Lehenga";
+  else if (/anarkali/i.test(text)) category = "Anarkali Suit";
   else if (/sherwani/i.test(text)) category = "Sherwani";
-  else if (/nehru[- ]?jacket/i.test(text)) category = "Nehru Jacket";
+  else if (/nehru[- ]?jacket|bundi/i.test(text)) category = "Nehru Jacket";
+  else if (/bandhgala|jodhpuri/i.test(text)) category = "Bandhgala";
+  else if (/salwar|churidar|patiala/i.test(text)) category = "Salwar Suit";
+  else if (/ethnic[- ]?set/i.test(text)) category = "Ethnic Set";
+  else if (/indo[- ]?western/i.test(text)) category = "Indo-Western";
+  else if (/co[- ]?ord|coord/i.test(text)) category = "Co-ord Set";
   else if (/t[-\s]?shirt|tee\b/i.test(text)) category = "T-Shirt";
   else if (/polo/i.test(text)) category = "Polo";
   else if (/shirt/i.test(text)) category = "Shirt";
   else if (/jacket|coat|blazer/i.test(text)) category = "Jacket";
   else if (/hoodie|sweatshirt/i.test(text)) category = "Hoodie";
   else if (/dress|gown/i.test(text)) category = "Dress";
-  else if (/top|blouse/i.test(text)) category = "Top";
-  else if (/sweater/i.test(text)) category = "Sweater";
-  else if (/pants|jeans|trousers/i.test(text)) category = "Bottoms";
+  else if (/top|blouse|tunic/i.test(text)) category = "Top";
+  else if (/sweater|cardigan/i.test(text)) category = "Sweater";
+  else if (/pants|jeans|trousers|joggers|shorts/i.test(text)) category = "Bottoms";
 
   // 4. Available Sizes Scraper
   const sizeElements = document.querySelectorAll(

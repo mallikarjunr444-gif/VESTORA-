@@ -85,6 +85,15 @@ function runTests() {
     assert(count === 350, `clothing_platforms_list.csv contains exactly 350 platforms (found ${count})`);
   }
 
+  // 10. India Launch Target Platforms Dataset Check (100 Indian Brands & Marketplaces)
+  const indiaCsvPath = path.resolve("clothing_platforms_india_100.csv");
+  assert(fs.existsSync(indiaCsvPath), "clothing_platforms_india_100.csv exists");
+  if (fs.existsSync(indiaCsvPath)) {
+    const lines = fs.readFileSync(indiaCsvPath, "utf-8").trim().split("\n");
+    const count = lines.length - 1;
+    assert(count === 100, `clothing_platforms_india_100.csv contains exactly 100 platforms (found ${count})`);
+  }
+
   console.log(`\n========================================`);
   console.log(`Results: ${passed} passed, ${failed} failed.`);
   console.log(`========================================\n`);
