@@ -177,7 +177,7 @@ function runGenericDetectorTests() {
   const scene7Hd = upgradeGenericImageUrl(scene7Raw);
   assert(scene7Hd.includes("wid=1600"), "Scene7 / Adobe media automatically elevated to wid=1600");
 
-  // ── 7. Fashion Taxonomy Breadth Tests (Western & Indian Ethnic) ──
+  // ── 7. Fashion Taxonomy Breadth Tests (Western, Indian Ethnic & Accessories) ──
   const testGarments = [
     { title: "Men's Slim Fit Chino Trousers", expectedCat: "lower_body", expectedType: "Trousers" },
     { title: "Kanjivaram Silk Wedding Saree with Zari Border", expectedCat: "full_body", expectedType: "Saree" },
@@ -185,7 +185,11 @@ function runGenericDetectorTests() {
     { title: "Bridal Embroidered Lehenga Choli", expectedCat: "full_body", expectedType: "Lehenga" },
     { title: "Floral Chiffon Summer Maxi Dress", expectedCat: "full_body", expectedType: "Dress" },
     { title: "Men's Air Jordan Retro High Sneakers", expectedCat: "shoes", expectedType: "Sneakers" },
-    { title: "Polarized Wayfarer Sunglasses", expectedCat: "accessories", expectedType: "Sunglasses" },
+    { title: "Polarized Wayfarer Sunglasses", expectedCat: "eyewear", expectedType: "Sunglasses" },
+    { title: "Classic Chronograph Wrist Watch", expectedCat: "wristwear", expectedType: "Watch" },
+    { title: "Gold Plated Pendant Necklace", expectedCat: "necklace", expectedType: "Necklace" },
+    { title: "Leather Crossbody Shoulder Bag", expectedCat: "bag", expectedType: "Bag" },
+    { title: "Wool Blend Knit Beanie Hat", expectedCat: "headwear", expectedType: "Hat" },
     { title: "High Rise Wide Leg Ripped Jeans", expectedCat: "lower_body", expectedType: "Jeans" },
     { title: "Royal Raw Silk Embroidered Sherwani", expectedCat: "full_body", expectedType: "Sherwani" },
   ];

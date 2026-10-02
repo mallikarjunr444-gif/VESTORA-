@@ -27,6 +27,7 @@ import {
 } from "./generic-product-detector.js";
 import { attachTryOnButton, attachCornerFloatingBadge } from "./tryon-button.js";
 import { extractProductFromElement } from "./product-extractor.js";
+import { isGoogleImagesPage, initGoogleImagesScanner } from "./google-images-adapter.js";
 
 const logger = new Logger("ProductDetector");
 
@@ -38,6 +39,13 @@ const logger = new Logger("ProductDetector");
 
   let activeProduct: Product | null = null;
   let hasEvaluatedPage = false;
+
+  // Google Images Dedicated Scanner
+  if (isGoogleImagesPage()) {
+    logger.info("Google Images detected — activating dedicated Google Images Try-On Scanner");
+    initGoogleImagesScanner(handleTryOnClick);
+    return;
+  }
 
   const intersectionObserver = new IntersectionObserver(
     (entries) => {
@@ -156,6 +164,26 @@ const logger = new Logger("ProductDetector");
   function handleTryOnClick(product: Product) {
     logger.info("User requested try-on for:", product.name);
     activeProduct = product;
+
+    // Check if live try-on widget is already open on page (Multi-item layering)
+    const existingIframe = document.getElementById("vestora-tryon-frame") as HTMLIFrameElement | null;
+    if (existingIframe && existingIframe.contentWindow) {
+      existingIframe.contentWindow.postMessage({
+        type: "VESTORA_ADD_OUTFIT_ITEM",
+        product: product,
+      }, "*");
+
+      const toast = document.createElement("div");
+      toast.className = "vestora-feedback-toast";
+      toast.innerHTML = `<span class="vestora-toast-icon">✦</span> Added <strong>${product.name.slice(0, 28)}…</strong> to active live try-on!`;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.classList.add("is-visible"), 10);
+      setTimeout(() => {
+        toast.classList.remove("is-visible");
+        setTimeout(() => toast.remove(), 400);
+      }, 2600);
+      return;
+    }
 
     // Notify background worker
     const message: ExtensionMessage<Product> = {

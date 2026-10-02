@@ -37,7 +37,7 @@ async function initPopup(): Promise<void> {
   if (selectPerfMode) selectPerfMode.value = settings.performanceMode;
 
   // Update product readout
-  if (activeProduct) {
+  if (activeProduct && detectedProductLabel && btnTryText) {
     detectedProductLabel.textContent = `✦ ${activeProduct.name}`;
     btnTryText.textContent = `Try "${activeProduct.name.slice(0, 18)}…"`;
   } else {
@@ -47,8 +47,12 @@ async function initPopup(): Promise<void> {
         chrome.tabs.sendMessage(tab.id, { type: "VESTORA_REQUEST_PAGE_PRODUCT" }).then((resp) => {
           if (resp?.success && resp.product) {
             activeProduct = resp.product;
-            detectedProductLabel.textContent = `✦ ${activeProduct.name}`;
-            btnTryText.textContent = `Try "${activeProduct.name.slice(0, 18)}…"`;
+            if (detectedProductLabel && activeProduct) {
+              detectedProductLabel.textContent = `✦ ${activeProduct.name}`;
+            }
+            if (btnTryText && activeProduct) {
+              btnTryText.textContent = `Try "${activeProduct.name.slice(0, 18)}…"`;
+            }
           }
         }).catch(() => {});
       }

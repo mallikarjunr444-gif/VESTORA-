@@ -463,6 +463,186 @@ html, body {
 }
 
 /* ═══════════════════════════════════════
+   MULTI-ITEM ACTIVE OUTFIT PANEL
+   ═══════════════════════════════════════ */
+.active-outfit-panel {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--v-border);
+  background: rgba(14, 17, 26, 0.7);
+}
+
+.outfit-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.outfit-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.outfit-sparkle {
+  color: var(--v-purple-light);
+  font-size: 13px;
+}
+
+.outfit-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--v-text);
+  letter-spacing: 0.02em;
+}
+
+.outfit-count-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.2);
+  color: var(--v-purple-light);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.outfit-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.outfit-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--v-border);
+  background: var(--v-bg-card);
+  color: var(--v-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.outfit-action-btn:hover {
+  background: rgba(139, 92, 246, 0.2);
+  border-color: var(--v-border-glow);
+  color: var(--v-text);
+}
+
+.outfit-action-btn.text-muted {
+  color: var(--v-text-dim);
+}
+
+.outfit-action-btn.text-muted:hover {
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.outfit-layers-list {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.outfit-layer-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 6px;
+  background: var(--v-bg-card);
+  border: 1px solid var(--v-border);
+  border-radius: var(--v-radius-sm);
+  flex-shrink: 0;
+  max-width: 220px;
+  transition: border-color 0.2s ease, opacity 0.2s ease;
+}
+
+.outfit-layer-card.is-active {
+  border-color: rgba(139, 92, 246, 0.5);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.15);
+}
+
+.outfit-layer-card.is-disabled {
+  opacity: 0.45;
+  filter: grayscale(0.5);
+}
+
+.outfit-layer-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: #000;
+  border: 1px solid var(--v-border);
+  flex-shrink: 0;
+}
+
+.outfit-layer-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.outfit-layer-category {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--v-purple-light);
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.outfit-layer-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--v-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 110px;
+}
+
+.outfit-layer-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 2px;
+}
+
+.outfit-layer-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--v-text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  transition: color 0.15s ease, background 0.15s ease;
+  padding: 0;
+}
+
+.outfit-layer-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--v-text);
+}
+
+.outfit-layer-btn.btn-remove:hover {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+/* ═══════════════════════════════════════
    SIZE ENGINE PANEL
    ═══════════════════════════════════════ */
 .size-engine-panel {

@@ -170,10 +170,32 @@
         </div>
       </div>
 
-      <!-- Helpful Platform Guidance (for Myntra, Ajio, Amazon, etc.) -->
+      <!-- ── Multi-Item Active Outfit Panel (Mixed Garments & Accessories) ── -->
+      <div id="active-outfit-panel" class="active-outfit-panel">
+        <div class="outfit-panel-header">
+          <div class="outfit-header-left">
+            <span class="outfit-sparkle">✦</span>
+            <span class="outfit-title">Active Try-On Outfit</span>
+            <span id="outfit-count-badge" class="outfit-count-badge">1 Item</span>
+          </div>
+          <div class="outfit-header-actions">
+            <button id="btn-add-item-pill" class="outfit-action-btn" type="button" title="Add clothing or accessory from page or link">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <span>Add Item</span>
+            </button>
+            <button id="btn-clear-outfit" class="outfit-action-btn text-muted" type="button" title="Clear all items">Clear All</button>
+          </div>
+        </div>
+        <!-- Active Outfit Layers -->
+        <div id="outfit-layers-list" class="outfit-layers-list">
+          <!-- Dynamically populated with layer chips: Jacket, Sunglasses, Watch, etc. -->
+        </div>
+      </div>
+
+      <!-- Helpful Platform Guidance (for Google Images, Myntra, Ajio, Amazon, etc.) -->
       <div class="platform-hint-strip">
         <span class="hint-sparkle">💡</span>
-        <span class="hint-text">Drag & drop blocked by store? Click <strong>✦ Grab Item</strong> above or <strong>Right-Click image → Try on with VESTORA</strong>!</span>
+        <span class="hint-text">Google Images & Stores: Hover/Click <strong>✦ Try with VESTORA</strong> on any item to add it to this live camera!</span>
       </div>
 
       <!-- Integrated Size Engine -->

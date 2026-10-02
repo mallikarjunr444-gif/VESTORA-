@@ -9,9 +9,10 @@ export interface Product {
   id?: string;
   name: string;
   imageUrl: string;
-  productUrl: string;
-  pageUrl: string;
+  productUrl?: string;
+  pageUrl?: string;
   category?: string;
+  garmentCategory?: string;
   brand?: string;
   price?: string;
   currency?: string;
@@ -120,7 +121,13 @@ export type ExtensionMessageType =
   | "VESTORA_UPDATE_SETTINGS"
   | "VESTORA_PRODUCT_DETECTED"
   | "VESTORA_OPEN_TRYON"
-  | "VESTORA_FETCH_IMAGE";
+  | "VESTORA_FETCH_IMAGE"
+  | "VESTORA_OPEN_WINDOW"
+  | "VESTORA_OPEN_SIDEPANEL"
+  | "VESTORA_GRAB_CURRENT_TAB_PRODUCT"
+  | "VESTORA_REQUEST_PAGE_PRODUCT"
+  | "VESTORA_ADD_OUTFIT_ITEM"
+  | "VESTORA_LOAD_PRODUCT";
 
 export interface ExtensionMessage<T = unknown> {
   type: ExtensionMessageType;

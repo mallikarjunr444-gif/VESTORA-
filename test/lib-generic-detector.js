@@ -175,13 +175,16 @@ const FASHION_TAXONOMY = [
   { category: "shoes", type: "Heels", pattern: /\b(?:heels|stilettos|pumps|wedges)\b/i },
   { category: "shoes", type: "Sandals", pattern: /\b(?:sandals|slides|flip[- ]?flops|slippers|clogs|crocs)\b/i },
   { category: "shoes", type: "Ethnic Footwear", pattern: /\b(?:juttis|mojaris|kolhapuris)\b/i },
-  // Accessories
-  { category: "accessories", type: "Sunglasses", pattern: /\b(?:sunglasses|shades|eyewear)\b/i },
-  { category: "accessories", type: "Watch", pattern: /\b(?:watch|wrist\s*watch|chronograph)\b/i },
-  { category: "accessories", type: "Bag", pattern: /\b(?:handbag|backpack|tote\s*bag|clutch|sling\s*bag|duffel)\b/i },
-  { category: "accessories", type: "Hat", pattern: /\b(?:cap|hat|beanie|bucket\s*hat|fedora)\b/i },
-  { category: "accessories", type: "Dupatta", pattern: /\b(?:dupatta|stole|scarf|shawl)\b/i },
-  { category: "accessories", type: "Belt", pattern: /\b(?:leather\s*belt|waist\s*belt)\b/i }
+  // Live Wearable Accessories (Anatomical Anchors)
+  { category: "eyewear", type: "Sunglasses", pattern: /\b(?:sunglasses|shades|eyewear|spectacles|glasses|aviators?|wayfarers?)\b/i },
+  { category: "headwear", type: "Hat", pattern: /\b(?:cap|baseball\s*cap|hat|beanie|bucket\s*hat|fedora|beret|snapback)\b/i },
+  { category: "earrings", type: "Earrings", pattern: /\b(?:earrings?|ear\s*studs?|hoops?|jhumkas?|drop\s*earrings?)\b/i },
+  { category: "necklace", type: "Necklace", pattern: /\b(?:necklace|choker|chain|pendant|locket|collar\s*necklace)\b/i },
+  { category: "wristwear", type: "Watch", pattern: /\b(?:watch|wrist\s*watch|chronograph|bracelet|bangle|wristband)\b/i },
+  { category: "ring", type: "Ring", pattern: /\b(?:ring|finger\s*ring|band|signet\s*ring)\b/i },
+  { category: "bag", type: "Bag", pattern: /\b(?:handbag|backpack|tote\s*bag|clutch|sling\s*bag|duffel|crossbody|satchel|shoulder\s*bag)\b/i },
+  { category: "belt", type: "Belt", pattern: /\b(?:leather\s*belt|waist\s*belt|designer\s*belt|buckle\s*belt)\b/i },
+  { category: "scarf", type: "Scarf", pattern: /\b(?:dupatta|stole|scarf|shawl|muffler)\b/i }
 ];
 function classifyFashionAndGarment(title, description = "", urlPath = "", categoryBreadcrumbs = []) {
   const combined = `${title} ${description} ${urlPath} ${categoryBreadcrumbs.join(" ")}`.toLowerCase();

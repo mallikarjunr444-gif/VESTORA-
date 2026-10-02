@@ -187,6 +187,8 @@ if (chrome.contextMenus) {
         brand: domain,
         category: "upper_body",
         imageUrl,
+        productUrl: tab?.url || "",
+        pageUrl: tab?.url || "",
         confidence: 1.0,
         availableSizes: ["XS", "S", "M", "L", "XL", "XXL"],
       };
