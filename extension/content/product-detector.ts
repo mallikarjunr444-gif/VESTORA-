@@ -49,16 +49,89 @@ const logger = new Logger("ProductDetector");
       }
     });
 
-    // Also scan background-image containers
-    const bgElements = Array.from(root.querySelectorAll<HTMLElement>("[style*='background-image'], .image-grid-image, .product-image"));
-    bgElements.forEach((el) => {
-      if (el.tagName !== "IMG" && isCandidateImage(el)) {
+    // Also scan custom fashion e-commerce containers (Myntra, Ajio, Zara, Flipkart, Shein, Amazon, Shopify)
+    const customSelectors = [
+      "[style*='background-image']",
+      ".image-grid-image",
+      ".image-grid-col",
+      ".pdp-image-container",
+      ".product-sliderContainer",
+      ".product-image",
+      ".img-container",
+      ".prod-image",
+      ".product__media",
+      ".product-single__photo",
+      ".product-media",
+      ".gallery-image",
+      "[data-testid*='product-image']",
+      "._396cs4",
+      "#landingImage",
+      ".product-base",
+      ".results-base",
+    ].join(", ");
+
+    const customElements = Array.from(root.querySelectorAll<HTMLElement>(customSelectors));
+    customElements.forEach((el) => {
+      if (isCandidateImage(el)) {
         attachTryOnButton(el, handleTryOnClick);
       }
     });
   }
 
   let activeProduct: Product | null = null;
+
+  function getHeroProduct(): Product | null {
+    if (activeProduct) return activeProduct;
+
+    const heroSelectors = [
+      ".image-grid-image img",
+      ".image-grid-image",
+      ".pdp-image-container img",
+      "#landingImage",
+      "#imgBlkFront",
+      ".product__media img",
+      ".product-single__photo img",
+      ".prod-image img",
+      "._396cs4",
+    ];
+
+    for (const sel of heroSelectors) {
+      const el = document.querySelector<HTMLElement>(sel);
+      if (el && isCandidateImage(el)) {
+        const imgUrl = extractBestImageUrl(el);
+        if (imgUrl) {
+          activeProduct = extractProductFromElement(el, imgUrl);
+          return activeProduct;
+        }
+      }
+    }
+
+    // OpenGraph fallback
+    const ogImg = document.querySelector('meta[property="og:image"]')?.getAttribute("content");
+    const ogTitle = document.querySelector('meta[property="og:title"]')?.getAttribute("content") || document.title;
+    if (ogImg && !ogImg.includes("logo") && !ogImg.includes("favicon")) {
+      return {
+        id: `hero_${Date.now()}`,
+        name: ogTitle.split(/[-|·]/)[0].trim(),
+        imageUrl: ogImg,
+        productUrl: location.href,
+        pageUrl: location.href,
+        category: "upper_body",
+        availableSizes: ["XS", "S", "M", "L", "XL", "XXL"],
+      };
+    }
+
+    // Largest candidate on page
+    const allImages = Array.from(document.querySelectorAll<HTMLElement>("img, [style*='background-image']"));
+    const candidates = allImages.filter((el) => isCandidateImage(el));
+    if (candidates.length > 0) {
+      const best = candidates[0];
+      const imgUrl = extractBestImageUrl(best);
+      if (imgUrl) return extractProductFromElement(best, imgUrl);
+    }
+
+    return null;
+  }
 
   function handleTryOnClick(product: Product) {
     logger.info("User requested try-on for:", product.name);
@@ -149,18 +222,26 @@ const logger = new Logger("ProductDetector");
     // Prevent body scroll while widget is open
     document.body.style.overflow = "hidden";
 
-    // Listen for close message from widget
-    const closeHandler = (event: MessageEvent) => {
+    // Listen for messages from widget
+    const widgetMessageHandler = (event: MessageEvent) => {
       if (event.data?.type === "VESTORA_CLOSE_TRYON") {
         overlay.style.opacity = "0";
         setTimeout(() => {
           overlay.remove();
           document.body.style.overflow = "";
         }, 300);
-        window.removeEventListener("message", closeHandler);
+        window.removeEventListener("message", widgetMessageHandler);
+      } else if (event.data?.type === "VESTORA_REQUEST_PAGE_PRODUCT") {
+        const prod = activeProduct || getHeroProduct();
+        if (iframe.contentWindow) {
+          iframe.contentWindow.postMessage({
+            type: "VESTORA_REQUEST_PAGE_PRODUCT_RESULT",
+            product: prod,
+          }, "*");
+        }
       }
     };
-    window.addEventListener("message", closeHandler);
+    window.addEventListener("message", widgetMessageHandler);
 
     // Close on Escape key
     const escHandler = (e: KeyboardEvent) => {
@@ -185,25 +266,45 @@ const logger = new Logger("ProductDetector");
   });
   mutationObserver.observe(document.body, { childList: true, subtree: true });
 
-  // Listen for popup messages
-  chrome.runtime.onMessage.addListener((msg: ExtensionMessage) => {
+  // Listen for messages from popup / sidepanel
+  chrome.runtime.onMessage.addListener((msg: ExtensionMessage, _sender, sendResponse) => {
     if (msg && msg.type === "VESTORA_OPEN_TRYON") {
       logger.info("Received request to open try-on from popup");
-      if (activeProduct) {
-        openTryOnWidget(activeProduct);
+      const prod = activeProduct || getHeroProduct();
+      if (prod) {
+        openTryOnWidget(prod);
+        sendResponse?.({ success: true, product: prod });
       } else {
-        // If no product detected yet, scan and try the first candidate
         const images = Array.from(document.querySelectorAll<HTMLImageElement>("img"));
         for (const img of images) {
           if (isCandidateImage(img)) {
             const imageUrl = extractBestImageUrl(img);
             const product = extractProductFromElement(img, imageUrl);
             openTryOnWidget(product);
+            sendResponse?.({ success: true, product });
             break;
           }
         }
       }
+      return false;
+    }
+
+    if (msg && msg.type === "VESTORA_REQUEST_PAGE_PRODUCT") {
+      const prod = activeProduct || getHeroProduct();
+      sendResponse?.({ success: !!prod, product: prod });
+      return false;
     }
   });
+
+  // Auto-detect and cache active product for extension action / side panel on PDPs
+  setTimeout(() => {
+    const hero = getHeroProduct();
+    if (hero) {
+      chrome.runtime.sendMessage({
+        type: "VESTORA_PRODUCT_DETECTED",
+        payload: hero,
+      }).catch(() => {});
+    }
+  }, 1200);
 })();
 

@@ -22,19 +22,26 @@ export function attachTryOnButton(el: HTMLElement, onTryClick: (product: Product
     anchor.style.position = "relative";
   }
 
-  // Ensure element is universally draggable into VESTORA try-on (Anywear drag-and-drop support)
+  // Ensure element and its parent container are universally draggable into VESTORA
   el.draggable = true;
+  anchor.draggable = true;
   try {
     (el.style as any).webkitUserDrag = "element";
+    (anchor.style as any).webkitUserDrag = "element";
   } catch {}
 
-  el.addEventListener("dragstart", (e: DragEvent) => {
+  const handleDragStart = (e: DragEvent) => {
     if (e.dataTransfer) {
       const imageUrl = extractBestImageUrl(el);
-      e.dataTransfer.setData("text/uri-list", imageUrl);
-      e.dataTransfer.setData("text/plain", imageUrl);
+      if (imageUrl) {
+        e.dataTransfer.setData("text/uri-list", imageUrl);
+        e.dataTransfer.setData("text/plain", imageUrl);
+      }
     }
-  });
+  };
+
+  el.addEventListener("dragstart", handleDragStart);
+  anchor.addEventListener("dragstart", handleDragStart);
 
   // Prevent duplicate buttons in same container
   if (anchor.querySelector(".vestora-tryon-btn")) return;
@@ -48,6 +55,7 @@ export function attachTryOnButton(el: HTMLElement, onTryClick: (product: Product
   btn.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
+    e.stopImmediatePropagation();
 
     const imageUrl = extractBestImageUrl(el);
     const product = extractProductFromElement(el, imageUrl);
@@ -57,6 +65,10 @@ export function attachTryOnButton(el: HTMLElement, onTryClick: (product: Product
 
     onTryClick(product);
   });
+
+  btn.addEventListener("touchstart", (e) => {
+    e.stopPropagation();
+  }, { passive: true });
 
   anchor.appendChild(btn);
 }

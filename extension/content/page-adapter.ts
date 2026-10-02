@@ -89,22 +89,85 @@ export function extractBestImageUrl(el: HTMLElement): string {
       img.src ||
       "";
 
-    // Flipkart resolution upgrade
-    if (direct && direct.includes("rukminim1.flixcart.com/image/")) {
-      return direct.replace(/\/image\/\d+\/\d+\//, "/image/832/832/");
-    }
-
-    return direct;
+    // Apply resolution upgrade
+    return upgradeImageUrl(direct);
   }
 
-  // CSS background image
-  const bg = window.getComputedStyle(el).backgroundImage;
+  // CSS background image (Myntra, Zara, luxury portals)
+  const bg = el.style.backgroundImage || window.getComputedStyle(el).backgroundImage;
   if (bg && bg.startsWith("url(")) {
     const match = bg.match(/url\(['"]?(.*?)['"]?\)/i);
-    if (match && match[1]) return match[1];
+    if (match && match[1]) return upgradeImageUrl(match[1]);
+  }
+
+  // Look for nested img inside wrapper
+  const nestedImg = el.querySelector("img");
+  if (nestedImg) {
+    return extractBestImageUrl(nestedImg);
   }
 
   return "";
+}
+
+export function upgradeImageUrl(url: string): string {
+  if (!url) return "";
+
+  // 1. Myntra resolution upgrade (assets.myntassets.com)
+  if (url.includes("assets.myntassets.com")) {
+    return url
+      .replace(/\/f_webp,[^/]+\//, "/h_1440,q_95,w_1080/")
+      .replace(/\/h_\d+,q_\d+,w_\d+\//, "/h_1440,q_95,w_1080/")
+      .replace(/\/w_\d+,c_limit,fl_progressive\//, "/h_1440,q_95,w_1080/");
+  }
+
+  // 2. Flipkart resolution upgrade (flixcart.com)
+  if (url.includes("flixcart.com/image/")) {
+    return url.replace(/\/image\/\d+\/\d+\//, "/image/832/832/");
+  }
+
+  // 3. Amazon resolution upgrade (media-amazon.com / images-amazon.com)
+  if (url.includes("media-amazon.com") || url.includes("images-amazon.com")) {
+    return url.replace(/\._[A-Z0-9_,]+_\./, "._AC_SL1500_.");
+  }
+
+  // 4. Zara / Inditex brands (Massimo Dutti, Pull&Bear, Bershka, Stradivarius)
+  if (url.includes("static.zara.net") || url.includes("itxweb.com")) {
+    return url.replace(/\/w\/\d+\//, "/w/1024/");
+  }
+
+  // 5. SHEIN / Romwe (ltwebstatic.com)
+  if (url.includes("ltwebstatic.com")) {
+    return url
+      .replace(/_thumbnail_\d+x\d+/, "")
+      .replace(/_\d+x\d+\.jpg/, ".jpg");
+  }
+
+  // 6. ASOS (asos-media.com)
+  if (url.includes("asos-media.com")) {
+    return url.replace(/\?\$[^$]+\$/, "?$n_960w$");
+  }
+
+  // 7. Shopify stores (cdn.shopify.com - 4.5M+ stores globally)
+  if (url.includes("cdn.shopify.com")) {
+    return url.replace(/_(?:pico|icon|thumb|small|compact|medium|large|grande|\d+x\d+)\.(jpg|jpeg|png|webp)/i, "_master.$1");
+  }
+
+  // 8. Meesho (images.meesho.com)
+  if (url.includes("images.meesho.com")) {
+    return url.replace(/\/(?:256|512)\//, "/1024/");
+  }
+
+  // 9. Ajio (assets.ajio.com)
+  if (url.includes("assets.ajio.com")) {
+    return url.replace(/\?.*$/, "");
+  }
+
+  // 10. Nike & Adidas
+  if (url.includes("nike.com") || url.includes("adidas.com")) {
+    return url.replace(/[?&]wid=\d+/, "?wid=1400");
+  }
+
+  return url;
 }
 
 export function isCandidateImage(el: HTMLElement): boolean {

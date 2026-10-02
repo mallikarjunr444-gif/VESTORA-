@@ -72,6 +72,19 @@ function runTests() {
     }
   }
 
+  // 8. Permissions Check (Side Panel & Context Menu for universal platform support)
+  assert(manifest.permissions.includes("sidePanel"), "Manifest includes 'sidePanel' permission for docked try-on");
+  assert(manifest.permissions.includes("contextMenus"), "Manifest includes 'contextMenus' for universal right-click try-on");
+
+  // 9. Global Clothing Platforms Dataset Check (350 Platforms Across 9 Categories)
+  const csvPath = path.resolve("clothing_platforms_list.csv");
+  assert(fs.existsSync(csvPath), "clothing_platforms_list.csv exists");
+  if (fs.existsSync(csvPath)) {
+    const lines = fs.readFileSync(csvPath, "utf-8").trim().split("\n");
+    const count = lines.length - 1; // subtract header
+    assert(count === 350, `clothing_platforms_list.csv contains exactly 350 platforms (found ${count})`);
+  }
+
   console.log(`\n========================================`);
   console.log(`Results: ${passed} passed, ${failed} failed.`);
   console.log(`========================================\n`);

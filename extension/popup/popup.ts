@@ -40,6 +40,19 @@ async function initPopup(): Promise<void> {
   if (activeProduct) {
     detectedProductLabel.textContent = `✦ ${activeProduct.name}`;
     btnTryText.textContent = `Try "${activeProduct.name.slice(0, 18)}…"`;
+  } else {
+    // Dynamically query active tab for page garment
+    chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+      if (tab?.id) {
+        chrome.tabs.sendMessage(tab.id, { type: "VESTORA_REQUEST_PAGE_PRODUCT" }).then((resp) => {
+          if (resp?.success && resp.product) {
+            activeProduct = resp.product;
+            detectedProductLabel.textContent = `✦ ${activeProduct.name}`;
+            btnTryText.textContent = `Try "${activeProduct.name.slice(0, 18)}…"`;
+          }
+        }).catch(() => {});
+      }
+    }).catch(() => {});
   }
 
   // Check hardware camera availability

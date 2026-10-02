@@ -16,6 +16,10 @@
         <span class="topbar-badge">LIVE</span>
       </div>
       <div class="topbar-actions">
+        <!-- Grab from active store tab (Bypasses drag-and-drop restrictions on Myntra, Ajio, etc.) -->
+        <button id="btn-grab-page" class="topbar-btn topbar-btn-grab" aria-label="Grab Product from Page" title="Grab clothing from active store tab (Myntra, Ajio, Zara, etc.)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
         <!-- Fit adjustment toggle -->
         <button id="btn-toggle-fit" class="topbar-btn" aria-label="Adjust Fit" title="Adjust Garment Fit">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg>
@@ -90,6 +94,18 @@
         </div>
       </div>
 
+      <!-- Paste Image URL Modal -->
+      <div id="paste-url-modal" class="paste-url-modal hidden">
+        <div class="paste-modal-card">
+          <h4>Paste Garment Image URL</h4>
+          <input type="url" id="paste-url-input" placeholder="https://...jpg or png from any store" class="paste-input" />
+          <div class="paste-modal-actions">
+            <button id="btn-submit-url" class="btn-modal-action primary">Load</button>
+            <button id="btn-cancel-url" class="btn-modal-action secondary">Cancel</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Body detection indicator -->
       <div id="body-detection-indicator" class="body-detect-indicator hidden">
         <div class="body-detect-ring"></div>
@@ -115,10 +131,20 @@
       <div class="product-info-strip">
         <img id="product-thumb" class="product-thumb" src="" alt="Product" />
         <div class="product-details">
-          <p id="product-name" class="product-name">Drag any garment or select an item</p>
-          <p id="product-category" class="product-category">Ready for Try-On</p>
+          <p id="product-name" class="product-name">Ready for Try-On</p>
+          <p id="product-category" class="product-category">Select an item from any fashion store</p>
         </div>
-        <button id="btn-load-sample" class="sample-pill-btn" title="Try demo apparel">Sample</button>
+        <div class="info-strip-actions">
+          <button id="btn-grab-page-pill" class="action-pill-btn grab-pill" title="Grab product from active store tab">✦ Grab Item</button>
+          <button id="btn-paste-url-pill" class="action-pill-btn" title="Paste Image Link">🔗 URL</button>
+          <button id="btn-load-sample" class="action-pill-btn sample-pill" title="Try demo apparel">Sample</button>
+        </div>
+      </div>
+
+      <!-- Helpful Platform Guidance (for Myntra, Ajio, Amazon, etc.) -->
+      <div class="platform-hint-strip">
+        <span class="hint-sparkle">💡</span>
+        <span class="hint-text">Drag & drop blocked by store? Click <strong>✦ Grab Item</strong> above or <strong>Right-Click image → Try on with VESTORA</strong>!</span>
       </div>
 
       <!-- Integrated Size Engine -->

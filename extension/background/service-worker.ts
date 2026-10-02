@@ -17,6 +17,18 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     if ((chrome as any).sidePanel?.setPanelBehavior) {
       await (chrome as any).sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
     }
+
+    // Register universal Right-Click Context Menu for any shopping website
+    if (chrome.contextMenus) {
+      chrome.contextMenus.removeAll(() => {
+        chrome.contextMenus.create({
+          id: "vestora-try-image",
+          title: "✦ Try on with VESTORA",
+          contexts: ["image", "link", "page"],
+        });
+      });
+    }
+
     const existing = await chrome.storage.local.get([STORAGE_KEYS.SETTINGS]);
     if (!existing[STORAGE_KEYS.SETTINGS]) {
       await chrome.storage.local.set({
@@ -134,11 +146,64 @@ chrome.runtime.onMessage.addListener(
         return false;
       }
 
+      case "VESTORA_GRAB_CURRENT_TAB_PRODUCT": {
+        chrome.tabs.query({ active: true, lastFocusedWindow: true }).then(([tab]) => {
+          if (tab?.id) {
+            chrome.tabs.sendMessage(tab.id, { type: "VESTORA_REQUEST_PAGE_PRODUCT" })
+              .then((resp) => {
+                sendResponse(resp || { success: false, error: "No product detected" });
+              })
+              .catch((err) => {
+                sendResponse({ success: false, error: String(err) });
+              });
+          } else {
+            sendResponse({ success: false, error: "No active tab found" });
+          }
+        }).catch((err) => {
+          sendResponse({ success: false, error: String(err) });
+        });
+        return true; // Keep channel open for async response
+      }
+
       default:
         return false;
     }
   }
 );
+
+// ── 3. Context Menu Click Handler (Universal Try-On) ──
+if (chrome.contextMenus) {
+  chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+    if (info.menuItemId === "vestora-try-image") {
+      let imageUrl = info.srcUrl || info.linkUrl || "";
+      if (!imageUrl && tab?.url) {
+        imageUrl = tab.url;
+      }
+
+      const domain = tab?.url ? new URL(tab.url).hostname.replace("www.", "") : "Store";
+      const product: Product = {
+        id: `ctx_${Date.now()}`,
+        name: `Clothing item from ${domain}`,
+        brand: domain,
+        category: "upper_body",
+        imageUrl,
+        confidence: 1.0,
+        availableSizes: ["XS", "S", "M", "L", "XL", "XXL"],
+      };
+
+      await chrome.storage.local.set({ [STORAGE_KEYS.ACTIVE_PRODUCT]: product });
+
+      if (tab?.windowId && (chrome as any).sidePanel?.open) {
+        try {
+          await (chrome as any).sidePanel.open({ windowId: tab.windowId });
+          return;
+        } catch {}
+      }
+
+      openTryOnWindow(product);
+    }
+  });
+}
 
 function openTryOnWindow(product?: Product): void {
   const productParam = product ? `?product=${encodeURIComponent(JSON.stringify(product))}` : "";

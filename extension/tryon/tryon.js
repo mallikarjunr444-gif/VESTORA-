@@ -80,6 +80,7 @@ const canvasEl = document.getElementById("garment-canvas");
 const ctx = canvasEl.getContext("2d", { desynchronized: true, alpha: true });
 
 // Topbar buttons
+const btnGrabPage = document.getElementById("btn-grab-page");
 const btnToggleFit = document.getElementById("btn-toggle-fit");
 const btnPopoutWindow = document.getElementById("btn-popout-window");
 const btnFlipCamera = document.getElementById("btn-flip-camera");
@@ -92,6 +93,12 @@ const cameraBlockedCard = document.getElementById("camera-blocked-card");
 const cameraErrorMessage = document.getElementById("camera-error-message");
 const btnFallbackSidepanel = document.getElementById("btn-fallback-sidepanel");
 const btnFallbackWindow = document.getElementById("btn-fallback-window");
+
+// Paste URL Modal
+const pasteUrlModal = document.getElementById("paste-url-modal");
+const pasteUrlInput = document.getElementById("paste-url-input");
+const btnSubmitUrl = document.getElementById("btn-submit-url");
+const btnCancelUrl = document.getElementById("btn-cancel-url");
 
 // Fit controls panel
 const fitControlsPanel = document.getElementById("fit-controls-panel");
@@ -114,6 +121,8 @@ const perfLatency = document.getElementById("perf-latency");
 const productThumb = document.getElementById("product-thumb");
 const productName = document.getElementById("product-name");
 const productCategory = document.getElementById("product-category");
+const btnGrabPagePill = document.getElementById("btn-grab-page-pill");
+const btnPasteUrlPill = document.getElementById("btn-paste-url-pill");
 const btnLoadSample = document.getElementById("btn-load-sample");
 
 // Sizing
@@ -841,6 +850,40 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
+// ─── Grab Product from Active Shopping Page ───
+// Universal solution for Myntra, Ajio, Amazon, Zara, Flipkart & all 350+ platforms where drag-and-drop is blocked
+
+async function grabProductFromCurrentTab() {
+  showToast("✦ Scanning page for clothing item…");
+
+  // 1. If running inside an iframe on the store page
+  if (window.parent !== window) {
+    window.parent.postMessage({ type: "VESTORA_REQUEST_PAGE_PRODUCT" }, "*");
+    return;
+  }
+
+  // 2. If running in Chrome Side Panel or dedicated window
+  if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+    chrome.runtime.sendMessage({ type: "VESTORA_GRAB_CURRENT_TAB_PRODUCT" }, (resp) => {
+      if (resp?.success && resp.product) {
+        loadProduct(resp.product);
+        showToast(`✦ Grabbed "${resp.product.name.slice(0, 24)}…" from page!`);
+      } else {
+        // Fallback: check storage for active product
+        chrome.storage?.local?.get(["vestora:active_product"], (data) => {
+          const prod = data?.["vestora:active_product"];
+          if (prod && prod.imageUrl) {
+            loadProduct(prod);
+            showToast(`✦ Loaded garment: "${prod.name.slice(0, 24)}…"`);
+          } else {
+            showToast("💡 Right-click any garment photo → '✦ Try on with VESTORA'!");
+          }
+        });
+      }
+    });
+  }
+}
+
 // ─── Event Listeners ───
 
 btnFlipCamera?.addEventListener("click", flipCamera);
@@ -849,6 +892,44 @@ btnPopoutWindow?.addEventListener("click", openInDedicatedWindow);
 btnFallbackWindow?.addEventListener("click", openInDedicatedWindow);
 btnFallbackSidepanel?.addEventListener("click", openInSidePanel);
 btnLoadSample?.addEventListener("click", loadNextSampleGarment);
+
+// Grab from Page triggers
+btnGrabPage?.addEventListener("click", grabProductFromCurrentTab);
+btnGrabPagePill?.addEventListener("click", grabProductFromCurrentTab);
+
+// Paste Image URL modal
+btnPasteUrlPill?.addEventListener("click", () => {
+  pasteUrlModal?.classList.remove("hidden");
+  pasteUrlInput?.focus();
+});
+
+btnCancelUrl?.addEventListener("click", () => {
+  pasteUrlModal?.classList.add("hidden");
+});
+
+btnSubmitUrl?.addEventListener("click", () => {
+  const url = pasteUrlInput?.value.trim();
+  if (url) {
+    loadProduct({
+      id: `pasted_${Date.now()}`,
+      name: "Custom Garment URL",
+      category: "Clothing Item",
+      imageUrl: url,
+      availableSizes: ["XS", "S", "M", "L", "XL", "XXL"],
+    });
+    pasteUrlModal?.classList.add("hidden");
+    if (pasteUrlInput) pasteUrlInput.value = "";
+    showToast("✦ Custom garment loaded!");
+  }
+});
+
+pasteUrlInput?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    btnSubmitUrl?.click();
+  } else if (e.key === "Escape") {
+    btnCancelUrl?.click();
+  }
+});
 
 btnClose?.addEventListener("click", () => {
   cleanup();
@@ -865,6 +946,14 @@ window.addEventListener("message", (event) => {
   if (!event.data || typeof event.data !== "object") return;
   if (event.data.type === "VESTORA_LOAD_PRODUCT") {
     loadProduct(event.data.product);
+  }
+  if (event.data.type === "VESTORA_REQUEST_PAGE_PRODUCT_RESULT") {
+    if (event.data.product) {
+      loadProduct(event.data.product);
+      showToast(`✦ Grabbed "${event.data.product.name.slice(0, 24)}…" from page!`);
+    } else {
+      showToast("💡 Right-click any clothing photo → '✦ Try on with VESTORA'!");
+    }
   }
   if (event.data.type === "VESTORA_TOGGLE_DEBUG") {
     perfHud?.classList.toggle("hidden");
