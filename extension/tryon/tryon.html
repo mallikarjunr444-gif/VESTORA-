@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>VESTORA Live Try-On</title>
   <link rel="stylesheet" href="tryon.css" />
 </head>
@@ -16,24 +16,79 @@
         <span class="topbar-badge">LIVE</span>
       </div>
       <div class="topbar-actions">
+        <!-- Fit adjustment toggle -->
+        <button id="btn-toggle-fit" class="topbar-btn" aria-label="Adjust Fit" title="Adjust Garment Fit">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg>
+        </button>
+        <!-- Pop out to dedicated window -->
+        <button id="btn-popout-window" class="topbar-btn" aria-label="Pop-out Window" title="Open in Dedicated Window">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </button>
+        <!-- Flip Camera (front / back) -->
         <button id="btn-flip-camera" class="topbar-btn" aria-label="Flip Camera" title="Flip Camera">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"/><path d="M8 21H3v-5"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"/><path d="M8 21H3v-5"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
         </button>
-        <button id="btn-screenshot" class="topbar-btn" aria-label="Take Screenshot" title="Screenshot">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+        <!-- Screenshot -->
+        <button id="btn-screenshot" class="topbar-btn" aria-label="Take Screenshot" title="Capture Screenshot">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
+        <!-- Close -->
         <button id="btn-close-tryon" class="topbar-btn topbar-btn-close" aria-label="Close" title="Close">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
     </header>
 
     <!-- ── Camera + Overlay Canvas Viewport ── -->
-    <main class="tryon-viewport">
+    <main id="tryon-viewport" class="tryon-viewport">
       <!-- Camera feed -->
       <video id="camera-feed" class="camera-video" autoplay playsinline muted></video>
-      <!-- Garment overlay canvas (same dimensions, layered on top) -->
+      <!-- Garment overlay canvas (layered on top) -->
       <canvas id="garment-canvas" class="garment-canvas"></canvas>
+
+      <!-- Drag & Drop Overlay Target (Anywear Signature Feature) -->
+      <div id="drop-zone-overlay" class="drop-zone-overlay hidden">
+        <div class="drop-zone-card">
+          <div class="drop-zone-icon-glow">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.38 3.46L16 2a4 4 0 01-8 0L3.62 3.46a2 2 0 00-1.34 2.23l.58 3.47a1 1 0 00.99.84H6v10a2 2 0 002 2h8a2 2 0 002-2V10h2.15a1 1 0 00.99-.84l.58-3.47a2 2 0 00-1.34-2.23z"/></svg>
+          </div>
+          <h3 class="drop-zone-title">Drop Garment to Try On</h3>
+          <p class="drop-zone-subtitle">Release any clothing photo from the store page here</p>
+        </div>
+      </div>
+
+      <!-- Camera Restricted / Blocked Fallback Card -->
+      <div id="camera-blocked-card" class="camera-blocked-card hidden">
+        <div class="blocked-card-inner">
+          <div class="blocked-icon">📹</div>
+          <h3>Camera Permission Needed</h3>
+          <p id="camera-error-message">This website's security policy restricts camera access inside embedded views.</p>
+          <div class="blocked-btn-group">
+            <button id="btn-fallback-sidepanel" class="btn-fallback primary">Open in Side Panel</button>
+            <button id="btn-fallback-window" class="btn-fallback secondary">Open Pop-out Window</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fit Fine-Tuning Floating Controls (Expandable) -->
+      <div id="fit-controls-panel" class="fit-controls-panel hidden">
+        <div class="fit-control-row">
+          <span class="fit-label">Scale:</span>
+          <button id="btn-scale-down" class="fit-btn" title="Shrink Garment">−</button>
+          <span id="fit-scale-val" class="fit-val">100%</span>
+          <button id="btn-scale-up" class="fit-btn" title="Enlarge Garment">+</button>
+        </div>
+        <div class="fit-control-row">
+          <span class="fit-label">Height:</span>
+          <button id="btn-move-up" class="fit-btn" title="Raise Garment">▲</button>
+          <button id="btn-move-down" class="fit-btn" title="Lower Garment">▼</button>
+          <button id="btn-reset-fit" class="fit-btn-reset" title="Reset Fit">Reset</button>
+        </div>
+        <div class="fit-control-row">
+          <span class="fit-label">Opacity:</span>
+          <input type="range" id="fit-opacity-slider" min="50" max="100" value="88" class="fit-slider" />
+        </div>
+      </div>
 
       <!-- Body detection indicator -->
       <div id="body-detection-indicator" class="body-detect-indicator hidden">
@@ -44,7 +99,7 @@
       <!-- Garment loading spinner -->
       <div id="garment-loader" class="garment-loader hidden">
         <div class="loader-spinner"></div>
-        <span class="loader-label">Loading garment…</span>
+        <span class="loader-label">Processing garment cutout…</span>
       </div>
 
       <!-- FPS / Performance HUD (debug) -->
@@ -60,9 +115,10 @@
       <div class="product-info-strip">
         <img id="product-thumb" class="product-thumb" src="" alt="Product" />
         <div class="product-details">
-          <p id="product-name" class="product-name">No product selected</p>
-          <p id="product-category" class="product-category">--</p>
+          <p id="product-name" class="product-name">Drag any garment or select an item</p>
+          <p id="product-category" class="product-category">Ready for Try-On</p>
         </div>
+        <button id="btn-load-sample" class="sample-pill-btn" title="Try demo apparel">Sample</button>
       </div>
 
       <!-- Integrated Size Engine -->
@@ -108,7 +164,7 @@
 
       <!-- Privacy + branding footer -->
       <div class="tryon-footer">
-        <span class="footer-privacy">🔒 All processing is local</span>
+        <span class="footer-privacy">🔒 100% On-Device Processing · Video Never Uploaded</span>
         <span class="footer-brand">VESTORA v1.0</span>
       </div>
     </footer>

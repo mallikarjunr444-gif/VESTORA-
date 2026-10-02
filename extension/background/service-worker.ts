@@ -14,6 +14,9 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   logger.info(`Extension installed/updated. Reason: ${details.reason}`);
 
   try {
+    if ((chrome as any).sidePanel?.setPanelBehavior) {
+      await (chrome as any).sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
+    }
     const existing = await chrome.storage.local.get([STORAGE_KEYS.SETTINGS]);
     if (!existing[STORAGE_KEYS.SETTINGS]) {
       await chrome.storage.local.set({
@@ -102,11 +105,51 @@ chrome.runtime.onMessage.addListener(
         return true; // Keep channel open for async response
       }
 
+      case "VESTORA_OPEN_SIDEPANEL": {
+        const windowId = sender.tab?.windowId;
+        const product = message.payload as Product | undefined;
+        if (product) {
+          chrome.storage.local.set({ [STORAGE_KEYS.ACTIVE_PRODUCT]: product });
+        }
+        if ((chrome as any).sidePanel?.open && windowId) {
+          (chrome as any).sidePanel.open({ windowId })
+            .then(() => sendResponse({ success: true }))
+            .catch((err: unknown) => {
+              logger.warn("Failed to open sidePanel, falling back to window:", err);
+              openTryOnWindow(product);
+              sendResponse({ success: true, fallback: "window" });
+            });
+          return true;
+        } else {
+          openTryOnWindow(product);
+          sendResponse({ success: true, fallback: "window" });
+          return false;
+        }
+      }
+
+      case "VESTORA_OPEN_WINDOW": {
+        const product = message.payload as Product | undefined;
+        openTryOnWindow(product);
+        sendResponse({ success: true });
+        return false;
+      }
+
       default:
         return false;
     }
   }
 );
+
+function openTryOnWindow(product?: Product): void {
+  const productParam = product ? `?product=${encodeURIComponent(JSON.stringify(product))}` : "";
+  chrome.windows.create({
+    url: chrome.runtime.getURL(`tryon/tryon.html${productParam}`),
+    type: "popup",
+    width: 480,
+    height: 820,
+    focused: true,
+  });
+}
 
 // ── 3. Helper: Fetch Image as Base64 Data URL (CORS Bypass) ──
 async function fetchImageAsDataUrl(url: string): Promise<string> {

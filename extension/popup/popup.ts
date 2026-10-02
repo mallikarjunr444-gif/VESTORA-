@@ -9,6 +9,8 @@ import type { ExtensionMessage, ExtensionSettings, Product } from "../../shared/
 // DOM Elements
 const btnTryProduct = document.getElementById("btn-try-product") as HTMLButtonElement;
 const btnTryText = document.getElementById("btn-try-text") as HTMLSpanElement;
+const btnOpenSidepanel = document.getElementById("btn-open-sidepanel") as HTMLButtonElement;
+const btnOpenWindow = document.getElementById("btn-open-window") as HTMLButtonElement;
 const detectedProductLabel = document.getElementById("detected-product-name") as HTMLParagraphElement;
 const cameraStatusText = document.getElementById("camera-status-text") as HTMLSpanElement;
 const perfStatusText = document.getElementById("perf-status-text") as HTMLSpanElement;
@@ -86,6 +88,41 @@ function setupListeners(): void {
       chrome.tabs.sendMessage(tab.id, message).catch(() => {});
       window.close();
     }
+  });
+
+  // Open Side Panel (Like Anywear split-view)
+  btnOpenSidepanel?.addEventListener("click", async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.windowId && (chrome as any).sidePanel?.open) {
+      (chrome as any).sidePanel.open({ windowId: tab.windowId }).catch(() => {
+        // Fallback to window
+        chrome.windows.create({
+          url: chrome.runtime.getURL(`tryon/tryon.html${activeProduct ? "?product=" + encodeURIComponent(JSON.stringify(activeProduct)) : ""}`),
+          type: "popup",
+          width: 480,
+          height: 820,
+        });
+      });
+    } else {
+      chrome.windows.create({
+        url: chrome.runtime.getURL(`tryon/tryon.html${activeProduct ? "?product=" + encodeURIComponent(JSON.stringify(activeProduct)) : ""}`),
+        type: "popup",
+        width: 480,
+        height: 820,
+      });
+    }
+    window.close();
+  });
+
+  // Open Dedicated Pop-out Window
+  btnOpenWindow?.addEventListener("click", () => {
+    chrome.windows.create({
+      url: chrome.runtime.getURL(`tryon/tryon.html${activeProduct ? "?product=" + encodeURIComponent(JSON.stringify(activeProduct)) : ""}`),
+      type: "popup",
+      width: 480,
+      height: 820,
+    });
+    window.close();
   });
 
   // Settings change listeners

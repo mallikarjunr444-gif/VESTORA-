@@ -47,9 +47,13 @@
       "matches": ["<all_urls>"]
     }
   ],
+  "side_panel": {
+    "default_path": "tryon/tryon.html"
+  },
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "sidePanel"
   ],
   "host_permissions": [
     "<all_urls>"

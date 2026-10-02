@@ -22,6 +22,20 @@ export function attachTryOnButton(el: HTMLElement, onTryClick: (product: Product
     anchor.style.position = "relative";
   }
 
+  // Ensure element is universally draggable into VESTORA try-on (Anywear drag-and-drop support)
+  el.draggable = true;
+  try {
+    (el.style as any).webkitUserDrag = "element";
+  } catch {}
+
+  el.addEventListener("dragstart", (e: DragEvent) => {
+    if (e.dataTransfer) {
+      const imageUrl = extractBestImageUrl(el);
+      e.dataTransfer.setData("text/uri-list", imageUrl);
+      e.dataTransfer.setData("text/plain", imageUrl);
+    }
+  });
+
   // Prevent duplicate buttons in same container
   if (anchor.querySelector(".vestora-tryon-btn")) return;
 
