@@ -357,121 +357,24 @@ function startRenderLoop() {
 
 let trackerCanvas = null;
 let trackerCtx = null;
-let lastDetectedFace = null;
-let trackerFrameCounter = 0;
-
-function detectUserTorsoFromCamera(width, height) {
-  if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) {
-    return null;
-  }
-
-  trackerFrameCounter++;
-  // Sample every 4th frame for high performance & silky 60 FPS
-  if (trackerFrameCounter % 4 !== 0 && lastDetectedFace) {
-    return lastDetectedFace;
-  }
-
-  try {
-    if (!trackerCanvas) {
-      trackerCanvas = document.createElement("canvas");
-      trackerCanvas.width = 80;
-      trackerCanvas.height = 60;
-      trackerCtx = trackerCanvas.getContext("2d", { willReadFrequently: true });
-    }
-
-    trackerCtx.drawImage(videoEl, 0, 0, 80, 60);
-    const imgData = trackerCtx.getImageData(0, 0, 80, 60);
-    const data = imgData.data;
-
-    let skinPixelCount = 0;
-    let sumX = 0;
-    let sumY = 0;
-    let minX = 80, maxX = 0, minY = 60, maxY = 0;
-
-    // Scan the upper 65% of the frame for human facial skin tones
-    for (let y = 4; y < 42; y++) {
-      for (let x = 8; x < 72; x++) {
-        const idx = (y * 80 + x) * 4;
-        const r = data[idx];
-        const g = data[idx + 1];
-        const b = data[idx + 2];
-
-        // Kovac generalized skin chromaticity model
-        const isSkin = r > 75 && g > 38 && b > 20 &&
-                       r > g && r > b &&
-                       Math.abs(r - g) > 12 &&
-                       (Math.max(r, g, b) - Math.min(r, g, b)) > 14;
-
-        if (isSkin) {
-          skinPixelCount++;
-          sumX += x;
-          sumY += y;
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
-        }
-      }
-    }
-
-    if (skinPixelCount > 30) {
-      const normCenterX = (sumX / skinPixelCount) / 80;
-      const normCenterY = (sumY / skinPixelCount) / 60;
-      const normWidth = Math.max(0.18, Math.min(0.42, (maxX - minX + 8) / 80));
-      const normHeight = Math.max(0.20, Math.min(0.44, (maxY - minY + 10) / 60));
-
-      const newFace = {
-        centerX: normCenterX,
-        centerY: normCenterY,
-        width: normWidth,
-        height: normHeight,
-      };
-
-      if (lastDetectedFace) {
-        lastDetectedFace = {
-          centerX: lastDetectedFace.centerX * 0.75 + newFace.centerX * 0.25,
-          centerY: lastDetectedFace.centerY * 0.75 + newFace.centerY * 0.25,
-          width: lastDetectedFace.width * 0.85 + newFace.width * 0.15,
-          height: lastDetectedFace.height * 0.85 + newFace.height * 0.15,
-        };
-      } else {
-        lastDetectedFace = newFace;
-      }
-      return lastDetectedFace;
-    }
-  } catch (e) {
-    // Canvas read fallback
-  }
-
-  return lastDetectedFace;
-}
-
 function estimateBasePose(width, height) {
-  const face = detectUserTorsoFromCamera(width, height);
-
-  // Dynamic user webcam sitting posture:
-  // When sitting at laptop/desktop, head is at ~30% height, neck at ~48%, shoulders at ~56%, chest at 50-95%
-  const headCenterX = face ? face.centerX * width : width * 0.50;
-  const headCenterY = face ? face.centerY * height : height * 0.30;
-  const headW = face ? face.width * width : width * 0.26;
-  const headH = face ? face.height * height : height * 0.28;
-
-  const eyeY = headCenterY - headH * 0.15;
-  const noseY = headCenterY;
-  const chinY = headCenterY + headH * 0.52;
-  const neckY = headCenterY + headH * 0.68;              // Collarbone sits right below chin
-  const shoulderY = headCenterY + headH * 0.90;          // Shoulders sit slightly below collarbone
-  const shoulderHalfWidth = headW * 1.35;               // Broad anatomical shoulder span
-  const torsoHeight = headH * 2.8;                      // Drapes down to cover user's shirt
-  const hipY = Math.min(height * 0.99, shoulderY + torsoHeight);
+  // Stable, realistic webcam anatomy (desktop / laptop sitting frame)
+  const headCenterX = width * 0.50;
+  const noseY = height * 0.38;
+  const eyeY = height * 0.32;
+  const neckY = height * 0.52;                       // Collarbone / neckline
+  const shoulderY = height * 0.60;                   // Natural shoulder level
+  const shoulderHalfWidth = width * 0.31;            // Total shoulder span ~62% of frame
+  const torsoHeight = height * 0.39;                 // Natural torso height
+  const hipY = Math.min(height * 0.98, shoulderY + torsoHeight);
 
   return {
     landmarks: [
       { x: headCenterX, y: noseY, v: 0.95 },                         // 0: Nose
-      { x: headCenterX - headW * 0.22, y: eyeY, v: 0.95 },          // 1: L Eye
-      { x: headCenterX + headW * 0.22, y: eyeY, v: 0.95 },          // 2: R Eye
-      { x: headCenterX - headW * 0.48, y: noseY, v: 0.90 },         // 3: L Ear
-      { x: headCenterX + headW * 0.48, y: noseY, v: 0.90 },         // 4: R Ear
+      { x: headCenterX - width * 0.06, y: eyeY, v: 0.95 },          // 1: L Eye
+      { x: headCenterX + width * 0.06, y: eyeY, v: 0.95 },          // 2: R Eye
+      { x: headCenterX - width * 0.12, y: noseY, v: 0.90 },         // 3: L Ear
+      { x: headCenterX + width * 0.12, y: noseY, v: 0.90 },         // 4: R Ear
       { x: headCenterX - shoulderHalfWidth, y: shoulderY, v: 0.95 },// 5: L Shoulder
       { x: headCenterX + shoulderHalfWidth, y: shoulderY, v: 0.95 },// 6: R Shoulder
       { x: headCenterX - shoulderHalfWidth * 1.15, y: shoulderY + torsoHeight * 0.5, v: 0.88 }, // 7: L Elbow
@@ -484,7 +387,7 @@ function estimateBasePose(width, height) {
       { x: headCenterX + shoulderHalfWidth * 0.8, y: height * 0.98, v: 0.80 }, // 14: R Knee
       { x: headCenterX - shoulderHalfWidth * 0.8, y: height * 1.0, v: 0.78 },  // 15: L Ankle
       { x: headCenterX + shoulderHalfWidth * 0.8, y: height * 1.0, v: 0.78 },  // 16: R Ankle
-      { x: headCenterX, y: headCenterY - headH * 0.55, v: 0.92 },    // 17: Head Crown
+      { x: headCenterX, y: height * 0.20, v: 0.92 },                 // 17: Head Crown
       { x: headCenterX, y: neckY, v: 0.95 },                         // 18: Neck / Collarbone
     ],
     confidence: 0.96,
@@ -832,20 +735,28 @@ function renderUpperBodyGarment(pose, canvasWidth, canvasHeight, item, isMirrore
   const lHip = pose.landmarks[POSE_LANDMARK.LEFT_HIP];
   if (!lShoulder || !rShoulder) return;
 
+  const src = item.processedCanvas || item.imageElement || item.source;
+  if (!src) return;
+
   const shoulderWidth = Math.abs(rShoulder.x - lShoulder.x);
-  const torsoHeight = lHip ? Math.abs(lHip.y - lShoulder.y) : canvasHeight * 0.45;
   const scale = item.scale || 1.0;
   const offsetY = item.offsetY || 0;
   const opacity = item.opacity !== undefined ? item.opacity : 1.0;
 
-  // Garment width covers shoulders and upper torso naturally
-  const garmentWidth = shoulderWidth * 1.38 * scale;
-  const garmentHeight = torsoHeight * 1.25 * scale;
+  // Preserve natural garment aspect ratio so clothing is never squashed or flattened!
+  const naturalW = src.width || src.naturalWidth || 600;
+  const naturalH = src.height || src.naturalHeight || 700;
+  const aspect = naturalH / naturalW;
+
+  // Spans shoulders naturally
+  const garmentWidth = shoulderWidth * 1.18 * scale;
+  // Natural vertical drape matching real shirt proportions
+  const garmentHeight = garmentWidth * aspect;
 
   const centerX = (lShoulder.x + rShoulder.x) / 2;
   // Collar aligns right at the base of the neck / collarbone, below the chin
   const collarY = neck ? neck.y : lShoulder.y;
-  const topY = collarY - (garmentHeight * 0.05) + offsetY;
+  const topY = collarY - (garmentHeight * 0.10) + offsetY;
 
   const drawX = isMirrored
     ? canvasWidth - centerX - garmentWidth / 2
@@ -860,10 +771,7 @@ function renderUpperBodyGarment(pose, canvasWidth, canvasHeight, item, isMirrore
   ctx.rotate(isMirrored ? -shoulderAngle : shoulderAngle);
   ctx.translate(-(drawX + garmentWidth / 2), -(topY + garmentHeight / 2));
 
-  const src = item.processedCanvas || item.imageElement || item.source;
-  if (src) {
-    ctx.drawImage(src, drawX, topY, garmentWidth, garmentHeight);
-  }
+  ctx.drawImage(src, drawX, topY, garmentWidth, garmentHeight);
   ctx.restore();
 }
 
@@ -1079,6 +987,32 @@ function processItemCutout(img) {
         if (colorDist(data[nIdx], data[nIdx + 1], data[nIdx + 2]) < threshold + 16) {
           visited[nPos] = 1;
           queue[qTail++] = nPos;
+        }
+      }
+    }
+
+    // Erase human model head, face, and neck from upper portion of catalog photos so only the garment is tried on
+    const maxHeadY = Math.floor(oh * 0.35);
+    for (let y = 0; y < maxHeadY; y++) {
+      for (let x = 0; x < ow; x++) {
+        const idx = (y * ow + x) * 4;
+        if (data[idx + 3] === 0) continue;
+
+        const r = data[idx];
+        const g = data[idx + 1];
+        const b = data[idx + 2];
+
+        // Detect model skin tones (face, chin, neck)
+        const isSkin = (r > 75 && g > 40 && b > 25 &&
+                        r > g && r > b &&
+                        Math.abs(r - g) > 10 &&
+                        (Math.max(r, g, b) - Math.min(r, g, b)) > 12);
+
+        // Detect model hair in the top 22%
+        const isHair = y < oh * 0.22 && (r < 55 && g < 55 && b < 55);
+
+        if (isSkin || isHair) {
+          data[idx + 3] = 0;
         }
       }
     }
