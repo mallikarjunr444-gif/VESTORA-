@@ -101,9 +101,9 @@ class VTONRequestHandler(BaseHTTPRequestHandler):
 
         # 3. POST /api/tryon
         elif self.path == "/api/tryon":
-            person_img = req_data.get("person") or req_data.get("personImage")
-            garment_img = req_data.get("garment") or req_data.get("garmentImage")
-            title = req_data.get("title", "Garment")
+            person_img = req_data.get("person") or req_data.get("personImage") or req_data.get("person_image")
+            garment_img = req_data.get("garment") or req_data.get("garmentImage") or req_data.get("garment_image")
+            title = req_data.get("title") or req_data.get("garment_name", "Garment")
             category_hint = req_data.get("category", "")
             options = req_data.get("options", {})
 
@@ -122,6 +122,39 @@ class VTONRequestHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self._send_json({"error": f"Try-on synthesis failed: {str(e)}"}, status=500)
 
+        # 4. POST /api/tryon/video-frame (Continuous camera frame stream with temporal consistency)
+        elif self.path == "/api/tryon/video-frame":
+            frame_img = req_data.get("frame") or req_data.get("person") or req_data.get("person_image")
+            garment_img = req_data.get("garment") or req_data.get("garmentImage") or req_data.get("garment_image")
+            title = req_data.get("title") or req_data.get("garment_name", "Garment")
+            category_hint = req_data.get("category", "")
+            options = req_data.get("options", {})
+
+            if not frame_img or not garment_img:
+                return self._send_json({"error": "Both 'frame' and 'garment' fields are required"}, status=400)
+
+            try:
+                frame_result = pipeline.process_video_frame(
+                    frame_image=frame_img,
+                    garment_image=garment_img,
+                    product_title=title,
+                    category_hint=category_hint,
+                    options=options
+                )
+                return self._send_json(frame_result)
+            except Exception as e:
+                return self._send_json({"error": f"Video frame synthesis failed: {str(e)}"}, status=500)
+
+        # 5. POST /api/engine/switch
+        elif self.path == "/api/engine/switch":
+            engine_name = req_data.get("engine", "catv2ton")
+            pipeline.switch_engine(engine_name)
+            return self._send_json({
+                "success": True,
+                "active_engine": engine_name,
+                "metadata": pipeline.engine.get_metadata()
+            })
+
         else:
             self._send_json({"error": "Not Found"}, status=404)
 
@@ -130,8 +163,8 @@ def run_server(port: int = PORT):
     httpd = HTTPServer(server_address, VTONRequestHandler)
     print("==================================================")
     print(f"✨ VESTORA Modular AI VTON Server running on http://localhost:{port}")
-    print(f"✨ Active Engine: CatVTON ({pipeline.engine.device.upper()})")
-    print("✨ Endpoints: /api/tryon, /api/classify-garment, /api/extract-garment, /api/tryon/status")
+    print(f"✨ Active Engine: {pipeline.engine.get_metadata()['name']} ({pipeline.engine.device.upper()})")
+    print("✨ Endpoints: /api/tryon, /api/tryon/video-frame, /api/classify-garment, /api/extract-garment, /api/tryon/status")
     print("==================================================")
     try:
         httpd.serve_forever()

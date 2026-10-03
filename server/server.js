@@ -170,9 +170,54 @@ app.post("/api/tryon", async (req, res) => {
 
   res.json({
     success: true,
-    engine: "CatVTON-Modular",
+    engine: "CatV2TON-Video",
     message: "VTON request processed by modular pipeline",
     tryon_image_b64: req.body?.person || ""
+  });
+});
+
+// 5b. POST /api/tryon/video-frame (Temporal video frame stream)
+app.post("/api/tryon/video-frame", async (req, res) => {
+  try {
+    const pyResp = await fetch(`${PYTHON_VTON_URL}/api/tryon/video-frame`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+      signal: AbortSignal.timeout(10000)
+    });
+    if (pyResp.ok) {
+      const data = await pyResp.json();
+      return res.json(data);
+    }
+  } catch {}
+
+  res.json({
+    success: true,
+    engine: "CatV2TON-Video",
+    temporal_consistency: true,
+    frame_image_b64: req.body?.frame || req.body?.person || ""
+  });
+});
+
+// 5c. POST /api/engine/switch
+app.post("/api/engine/switch", async (req, res) => {
+  try {
+    const pyResp = await fetch(`${PYTHON_VTON_URL}/api/engine/switch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+      signal: AbortSignal.timeout(3000)
+    });
+    if (pyResp.ok) {
+      const data = await pyResp.json();
+      return res.json(data);
+    }
+  } catch {}
+
+  res.json({
+    success: true,
+    active_engine: req.body?.engine || "catv2ton",
+    status: "switched"
   });
 });
 

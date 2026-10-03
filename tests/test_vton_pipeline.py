@@ -237,10 +237,46 @@ def run_tests():
 
     # ── Test 7: Hardware & Device Support ──
     meta = pipeline.engine.get_metadata()
-    assert "CatVTON" in meta["name"], "Engine name is CatVTON"
+    assert "CatVTON" in meta["name"] or "CatV2TON" in meta["name"], "Engine name is CatVTON or CatV2TON"
     assert "CC BY-NC-SA 4.0" in meta["license"], "License documented as CC BY-NC-SA 4.0"
     assert meta["device"] in ["mps", "cuda", "cpu"], "Device is valid MPS/CUDA/CPU"
-    print(f"  ✓ PASS: Hardware detection functional: Device '{meta['device']}' ({meta['hardware_acceleration']})")
+    print(f"  ✓ PASS: Hardware detection functional: Device '{meta['device']}'")
+    passed += 1
+
+    # ── Test 8: CatV2TON Video Virtual Try-On Engine & Temporal Consistency ──
+    print("\n[Running Test 8: CatV2TON Video Engine & Live Camera Temporal Stream]")
+    from backend.vton.engine.catv2ton_video_engine import CatV2TONVideoEngine
+    video_engine = CatV2TONVideoEngine()
+    video_engine.initialize()
+    v_meta = video_engine.get_metadata()
+    assert v_meta["name"] == "CatV2TON-Video", "Engine name must be CatV2TON-Video"
+    assert v_meta["capability"] == "image_and_video", "Must support video and image"
+    assert v_meta["temporal_consistency"] is True, "Must support temporal consistency"
+
+    # Simulate 3 consecutive camera frames with slight movement
+    person_f1 = create_mock_person_image(shirt_color=(240, 200, 30))
+    person_f2 = create_mock_person_image(shirt_color=(240, 200, 30))
+    shirt_navy = create_mock_garment_image(color=(25, 50, 140), garment_type="shirt")
+
+    v_pipeline = VTONPipeline(engine=video_engine)
+    res_f1 = v_pipeline.process_video_frame(person_f1, shirt_navy, product_title="Navy Blue Dress Shirt")
+    assert res_f1["success"] is True, "Frame 1 must succeed"
+    assert res_f1["temporal_consistency"] is True, "Frame 1 must have temporal consistency"
+    assert res_f1["frame_index"] == 1, "Frame index must be 1"
+
+    res_f2 = v_pipeline.process_video_frame(person_f2, shirt_navy, product_title="Navy Blue Dress Shirt")
+    assert res_f2["success"] is True, "Frame 2 must succeed"
+    assert res_f2["frame_index"] == 2, "Frame index must be 2"
+    print("  ✓ PASS: CatV2TON Video Engine processes continuous live camera frames with temporal consistency")
+    passed += 1
+
+    # ── Test 9: Modular Engine Hot-Switching ──
+    print("\n[Running Test 9: Modular Engine Hot-Switching]")
+    v_pipeline.switch_engine("catvton")
+    assert "CatVTON" in v_pipeline.engine.get_metadata()["name"]
+    v_pipeline.switch_engine("catv2ton")
+    assert "CatV2TON" in v_pipeline.engine.get_metadata()["name"]
+    print("  ✓ PASS: Modular VTON Engine seamlessly switches between CatVTON and CatV2TON")
     passed += 1
 
     print("\n==================================================")

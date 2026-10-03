@@ -20,18 +20,27 @@ from ..body_parser import BodyParser
 from ..pose import PoseTracker
 from .base import BaseVTONEngine
 from .catvton_engine import CatVTONEngine
+from .catv2ton_video_engine import CatV2TONVideoEngine
 
 class VTONPipeline:
     """
     Unified VTON pipeline orchestrating complete virtual try-on workflow.
+    Supports both image virtual try-on (CatVTON) and live video streaming try-on (CatV2TON).
     """
 
-    def __init__(self, engine: Optional[BaseVTONEngine] = None):
+    def __init__(self, engine: Optional[BaseVTONEngine] = None, engine_type: str = "catv2ton"):
         self.classifier = GarmentClassifier()
         self.extractor = GarmentExtractor()
         self.body_parser = BodyParser()
         self.pose_tracker = PoseTracker()
-        self.engine = engine or CatVTONEngine()
+        
+        if engine:
+            self.engine = engine
+        elif engine_type.lower() == "catv2ton":
+            self.engine = CatV2TONVideoEngine()
+        else:
+            self.engine = CatVTONEngine()
+            
         self.engine.initialize()
 
     def process_tryon(
@@ -95,10 +104,90 @@ class VTONPipeline:
             "extracted_garment_b64": extracted["extracted_b64"],
             "target_region": classification["target_region"],
             "target_body_regions": classification["target_body_regions"],
-            "engine": result.get("engine", "CatVTON"),
+            "engine": result.get("engine", "CatV2TON-Video"),
             "device": result.get("device", "cpu"),
             "metadata": self.engine.get_metadata()
         }
+
+    def process_video_frame(
+        self,
+        frame_image: Union[Image.Image, str],
+        garment_image: Union[Image.Image, str],
+        product_title: str = "Garment",
+        category_hint: str = "",
+        options: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Processes a live video camera frame with temporal consistency.
+        Replaces user's existing shirt, stabilizes movement frame-to-frame,
+        preserves identity/background, and returns transformed live frame.
+        """
+        frame_pil = self._load_image(frame_image)
+        garment_raw_pil = self._load_image(garment_image)
+
+        # 1. Garment classification
+        classification = self.classifier.classify(product_title, category_hint)
+        category = classification["category"]
+        garment_type = classification["type"]
+
+        # 2. Complete garment extraction
+        extracted = self.extractor.extract(garment_raw_pil, category=category, garment_type=garment_type)
+        extracted_garment_pil = extracted["extracted_image"]
+
+        # 3. Dynamic pose landmark tracking
+        pw, ph = frame_pil.size
+        pose_data = self.pose_tracker.estimate_pose(pw, ph)
+
+        # 4. Body parsing (erasing old clothes)
+        parsed = self.body_parser.parse(frame_pil, category=category, pose_landmarks=pose_data["landmarks"])
+        inpaint_mask = parsed["inpaint_mask"]
+
+        # 5. Temporal video inference
+        run_options = {**(options or {}), "garment_type": garment_type}
+        if hasattr(self.engine, "run_video_frame"):
+            result = self.engine.run_video_frame(
+                frame_image=frame_pil,
+                garment_image=extracted_garment_pil,
+                category=category,
+                inpaint_mask=inpaint_mask,
+                pose_data=pose_data,
+                options=run_options
+            )
+        else:
+            result = self.engine.run_tryon(
+                person_image=frame_pil,
+                garment_image=extracted_garment_pil,
+                category=category,
+                inpaint_mask=inpaint_mask,
+                pose_data=pose_data,
+                options=run_options
+            )
+
+        # 6. Encode frame
+        output_pil = result["output_image"]
+        buffered = io.BytesIO()
+        output_pil.save(buffered, format="PNG")
+        output_b64 = "data:image/png;base64," + base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+        return {
+            "success": True,
+            "frame_image_b64": output_b64,
+            "frame_index": result.get("frame_index", 1),
+            "classification": classification,
+            "target_region": classification["target_region"],
+            "engine": result.get("engine", "CatV2TON-Video"),
+            "device": result.get("device", "cpu"),
+            "temporal_consistency": result.get("temporal_consistency", True),
+            "metadata": self.engine.get_metadata()
+        }
+
+    def switch_engine(self, engine_name: str):
+        """Swaps active VTON model between CatV2TON (video) and CatVTON (image)"""
+        if engine_name.lower() == "catv2ton":
+            self.engine = CatV2TONVideoEngine()
+        else:
+            self.engine = CatVTONEngine()
+        self.engine.initialize()
 
     def _load_image(self, img_input: Union[Image.Image, str]) -> Image.Image:
         """Converts base64 data URLs, file paths, or PIL Images to PIL Image"""
