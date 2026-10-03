@@ -166,29 +166,29 @@ app = Flask(__name__)
 
 @app.route('/api/vton/frame', methods=['POST'])
 def process_frame():
-    """Accept a JSON payload with base64-encoded images and metadata.
+    """Accept a JSON payload with base64‑encoded images and metadata.
     Expected fields:
-        person_image: base64 string of the user image (RGB or RGBA)
-        garment_image: base64 string of the clothing item
-        category: string identifier (e.g., "tshirt", "dress", etc.)
+        frame: base64 string of the current video frame (user image)
+        garment: base64 string of the selected garment image
+        category: string identifier (e.g., "tshirt", "dress", etc.) – defaults to "upper_body"
         landmarks: optional list of pose landmarks (list of dicts with x, y, visibility)
     Returns:
-        JSON with "overlay_image" as base64 PNG of the try‑on result.
+        JSON with "frame_image_b64" as base64 PNG of the try‑on result.
     """
     data = request.get_json(force=True)
     if not data:
         return jsonify({"error": "No JSON payload provided"}), 400
 
-    try:
-        person_b64 = data["person_image"]
-        garment_b64 = data["garment_image"]
-        category = data.get("category", "upper_body")
-        landmarks = data.get("landmarks", [])
-    except KeyError as e:
-        return jsonify({"error": f"Missing field {e}"}), 400
+    # Extract fields from front‑end payload
+    frame_b64 = data.get("frame")
+    garment_b64 = data.get("garment")
+    category = data.get("category", "upper_body")
+    landmarks = data.get("landmarks", [])
+    if not frame_b64 or not garment_b64:
+        return jsonify({"error": "Missing frame or garment data"}), 400
 
     # Decode images
-    person_img = Image.open(io.BytesIO(base64.b64decode(person_b64))).convert("RGBA")
+    person_img = Image.open(io.BytesIO(base64.b64decode(frame_b64))).convert("RGBA")
     garment_img = Image.open(io.BytesIO(base64.b64decode(garment_b64))).convert("RGBA")
 
     _ensure_model_loaded()
@@ -205,8 +205,8 @@ def process_frame():
     # Encode result back to base64 PNG
     buffered = io.BytesIO()
     result_img.save(buffered, format="PNG")
-    overlay_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-    return jsonify({"overlay_image": overlay_b64})
+    frame_image_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+    return jsonify({"frame_image_b64": frame_image_b64})
 
 if __name__ == '__main__':
     # Run on all interfaces for the Express proxy to reach it
