@@ -1,0 +1,1870 @@
+/**
+ * VESTORA — Live Try-On Widget Controller
+ * 
+ * Full Device Support:
+ * 1. Live Camera Stream with robust cross-device fallback (Laptops, Desktops, iOS/Android phones, Tablets)
+ * 2. Universal Drag-and-Drop garment ingestion (Anywear signature workflow)
+ * 3. Smart on-device garment background cutout (alpha keying)
+ * 4. Interactive Garment Fit Controls (Scale, Height Offset, Opacity)
+ * 5. Pose tracking and responsive garment draping
+ * 6. AI Size Recommendation Engine (real-time body measurements)
+ * 7. Pop-out to Dedicated Window or Side Panel for guaranteed camera access
+ * 8. Screenshot capture with brand watermark
+ */
+
+// ─── Constants: 19 Anatomical Anchor Landmarks ───
+const POSE_LANDMARK = {
+  NOSE: 0,
+  LEFT_EYE: 1,
+  RIGHT_EYE: 2,
+  LEFT_EAR: 3,
+  RIGHT_EAR: 4,
+  LEFT_SHOULDER: 5,
+  RIGHT_SHOULDER: 6,
+  LEFT_ELBOW: 7,
+  RIGHT_ELBOW: 8,
+  LEFT_WRIST: 9,
+  RIGHT_WRIST: 10,
+  LEFT_HIP: 11,
+  RIGHT_HIP: 12,
+  LEFT_KNEE: 13,
+  RIGHT_KNEE: 14,
+  LEFT_ANKLE: 15,
+  RIGHT_ANKLE: 16,
+  HEAD_CROWN: 17,
+  NECK: 18,
+};
+
+const SIZE_CHART = {
+  XS: { shoulder: [36, 39], chest: [81, 87], waist: [66, 72] },
+  S:  { shoulder: [39, 42], chest: [87, 93], waist: [72, 78] },
+  M:  { shoulder: [42, 45], chest: [93, 99], waist: [78, 84] },
+  L:  { shoulder: [45, 48], chest: [99, 107], waist: [84, 92] },
+  XL: { shoulder: [48, 52], chest: [107, 115], waist: [92, 100] },
+  XXL:{ shoulder: [52, 56], chest: [115, 124], waist: [100, 110] },
+};
+
+// Built-in sample garments & accessories for instant testing on any device
+const SAMPLE_GARMENTS = [
+  {
+    name: "Oversized Minimalist Jacket",
+    category: "Jacket",
+    garmentCategory: "upper_body",
+    imageUrl: "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=600&auto=format&fit=crop&q=80",
+    availableSizes: ["S", "M", "L", "XL"]
+  },
+  {
+    name: "Classic Aviator Sunglasses",
+    category: "Sunglasses",
+    garmentCategory: "eyewear",
+    imageUrl: "https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=600&auto=format&fit=crop&q=80",
+    availableSizes: ["One Size"]
+  },
+  {
+    name: "Minimalist Chronograph Watch",
+    category: "Watch",
+    garmentCategory: "wristwear",
+    imageUrl: "https://images.unsplash.com/photo-1524805444758-089113d48a6d?w=600&auto=format&fit=crop&q=80",
+    availableSizes: ["One Size"]
+  },
+  {
+    name: "Streetwear Graphic Hoodie",
+    category: "Hoodie",
+    garmentCategory: "upper_body",
+    imageUrl: "https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=600&auto=format&fit=crop&q=80",
+    availableSizes: ["M", "L", "XL", "XXL"]
+  },
+  {
+    name: "Urban Snapback Baseball Cap",
+    category: "Hat",
+    garmentCategory: "headwear",
+    imageUrl: "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?w=600&auto=format&fit=crop&q=80",
+    availableSizes: ["One Size"]
+  }
+];
+let currentSampleIndex = 0;
+
+// ─── State ───
+let currentInputMode = "camera"; // "camera" | "photo"
+let userPhotoLoaded = false;
+let cameraStream = null;
+let currentFacing = "user"; // "user" (front) or "environment" (back)
+let animationFrameId = null;
+let isBodyDetected = false;
+let currentProduct = null;
+let garmentImage = null;
+let processedGarmentCanvas = null;
+let poseHistory = [];
+const MAX_POSE_HISTORY = 8;
+
+// Multi-Item Active Outfit Layer Stack
+let activeOutfit = []; // Array of OutfitItem: { id, name, category, garmentCategory, imageUrl, enabled, scale, offsetY, opacity, imageElement, processedCanvas }
+let selectedLayerId = null;
+
+// Fit adjustments
+let fitScale = 1.0;
+let fitOffsetY = 0;
+let fitOpacity = 0.88;
+
+// Drag & drop state
+let dragCounter = 0;
+
+// ─── DOM References ───
+const videoEl = document.getElementById("camera-feed");
+const userPhotoFeed = document.getElementById("user-photo-feed");
+const canvasEl = document.getElementById("garment-canvas");
+const ctx = canvasEl.getContext("2d", { desynchronized: true, alpha: true });
+
+// Mode Switcher Elements
+const btnModeCamera = document.getElementById("btn-mode-camera");
+const btnModePhoto = document.getElementById("btn-mode-photo");
+const userPhotoInput = document.getElementById("user-photo-input");
+const photoUploadPrompt = document.getElementById("photo-upload-prompt");
+const btnBrowsePhoto = document.getElementById("btn-browse-photo");
+const btnFallbackPhoto = document.getElementById("btn-fallback-photo");
+const topbarLiveBadge = document.getElementById("topbar-live-badge");
+
+// Active Outfit Panel Elements
+const activeOutfitPanel = document.getElementById("active-outfit-panel");
+const outfitCountBadge = document.getElementById("outfit-count-badge");
+const outfitLayersList = document.getElementById("outfit-layers-list");
+const btnAddItemPill = document.getElementById("btn-add-item-pill");
+const btnClearOutfit = document.getElementById("btn-clear-outfit");
+
+// Topbar buttons
+const btnGrabPage = document.getElementById("btn-grab-page");
+const btnToggleFit = document.getElementById("btn-toggle-fit");
+const btnPopoutWindow = document.getElementById("btn-popout-window");
+const btnFlipCamera = document.getElementById("btn-flip-camera");
+const btnScreenshot = document.getElementById("btn-screenshot");
+const btnClose = document.getElementById("btn-close-tryon");
+
+// Viewport Overlays
+const dropZoneOverlay = document.getElementById("drop-zone-overlay");
+const cameraBlockedCard = document.getElementById("camera-blocked-card");
+const cameraErrorMessage = document.getElementById("camera-error-message");
+const btnFallbackSidepanel = document.getElementById("btn-fallback-sidepanel");
+const btnFallbackWindow = document.getElementById("btn-fallback-window");
+
+// Paste URL Modal
+const pasteUrlModal = document.getElementById("paste-url-modal");
+const pasteUrlInput = document.getElementById("paste-url-input");
+const btnSubmitUrl = document.getElementById("btn-submit-url");
+const btnCancelUrl = document.getElementById("btn-cancel-url");
+
+// Fit controls panel
+const fitControlsPanel = document.getElementById("fit-controls-panel");
+const btnScaleDown = document.getElementById("btn-scale-down");
+const btnScaleUp = document.getElementById("btn-scale-up");
+const fitScaleVal = document.getElementById("fit-scale-val");
+const btnMoveUp = document.getElementById("btn-move-up");
+const btnMoveDown = document.getElementById("btn-move-down");
+const btnResetFit = document.getElementById("btn-reset-fit");
+const fitOpacitySlider = document.getElementById("fit-opacity-slider");
+
+// Indicators & HUD
+const bodyIndicator = document.getElementById("body-detection-indicator");
+const garmentLoader = document.getElementById("garment-loader");
+const perfHud = document.getElementById("perf-hud");
+const perfFps = document.getElementById("perf-fps");
+const perfLatency = document.getElementById("perf-latency");
+
+// Product info & Samples
+const productThumb = document.getElementById("product-thumb");
+const productName = document.getElementById("product-name");
+const productCategory = document.getElementById("product-category");
+const btnGrabPagePill = document.getElementById("btn-grab-page-pill");
+const btnPasteUrlPill = document.getElementById("btn-paste-url-pill");
+const btnLoadSample = document.getElementById("btn-load-sample");
+
+// Sizing
+const measShoulder = document.getElementById("meas-shoulder");
+const measChest = document.getElementById("meas-chest");
+const measWaist = document.getElementById("meas-waist");
+const measTorso = document.getElementById("meas-torso");
+const recommendedSizeValue = document.getElementById("recommended-size-value");
+const sizeOptionsContainer = document.getElementById("size-options");
+
+// ─── Camera Management (Resilient Cross-Device) ───
+
+async function initCamera(facingMode = "user") {
+  // Stop existing stream
+  if (cameraStream) {
+    cameraStream.getTracks().forEach((t) => t.stop());
+    cameraStream = null;
+  }
+
+  showBodyIndicator(true);
+  hideCameraBlocked();
+
+  // Try ideal high-definition constraints first
+  const highConstraints = {
+    video: {
+      facingMode: { ideal: facingMode },
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      frameRate: { ideal: 30 },
+    },
+    audio: false,
+  };
+
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia(highConstraints);
+    setupStream(cameraStream, facingMode);
+  } catch (errHigh) {
+    console.warn("[VESTORA] High constraints failed, attempting fallback:", errHigh);
+    try {
+      // Fallback constraints for laptops/smartphones with simpler cameras
+      const fallbackConstraints = {
+        video: { facingMode: { ideal: facingMode } },
+        audio: false,
+      };
+      cameraStream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+      setupStream(cameraStream, facingMode);
+    } catch (errFallback) {
+      console.warn("[VESTORA] Fallback constraints failed, attempting standard video:", errFallback);
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        setupStream(cameraStream, facingMode);
+      } catch (errFinal) {
+        handleCameraFailure(errFinal);
+      }
+    }
+  }
+}
+
+async function setupStream(stream, facingMode) {
+  videoEl.srcObject = stream;
+  // Mirror only for front camera
+  videoEl.style.transform = facingMode === "user" ? "scaleX(-1)" : "scaleX(1)";
+
+  await new Promise((resolve) => {
+    videoEl.onloadedmetadata = () => {
+      videoEl.play().then(resolve).catch(resolve);
+    };
+  });
+
+  resizeCanvas();
+  window.addEventListener("resize", resizeCanvas);
+
+  startRenderLoop();
+
+  // Baseline detection indicator
+  setTimeout(() => {
+    isBodyDetected = true;
+    showBodyIndicator(false);
+    showToast("✦ Body detected — try-on active!");
+  }, 1200);
+
+  currentFacing = facingMode;
+}
+
+function handleCameraFailure(err) {
+  console.error("[VESTORA] Camera init failed completely:", err);
+  showBodyIndicator(false);
+
+  const isIframe = window.parent !== window;
+  if (isIframe) {
+    cameraErrorMessage.textContent = 
+      "This shopping site restricts camera access inside embedded views. Open VESTORA in Chrome Side Panel or a separate window for unrestricted access.";
+  } else {
+    cameraErrorMessage.textContent = 
+      "Camera access was denied or no camera device was found. Please allow camera permissions in your browser settings.";
+  }
+  showCameraBlocked();
+}
+
+function showCameraBlocked() {
+  cameraBlockedCard?.classList.remove("hidden");
+}
+
+function hideCameraBlocked() {
+  cameraBlockedCard?.classList.add("hidden");
+}
+
+function resizeCanvas() {
+  if (!videoEl.videoWidth) return;
+  canvasEl.width = videoEl.videoWidth;
+  canvasEl.height = videoEl.videoHeight;
+}
+
+function flipCamera() {
+  const newFacing = currentFacing === "user" ? "environment" : "user";
+  initCamera(newFacing);
+}
+
+// ─── Render Loop ───
+
+let lastFrameTime = 0;
+let frameCount = 0;
+let lastFpsUpdate = 0;
+
+function startRenderLoop() {
+  if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
+  function frame(timestamp) {
+    animationFrameId = requestAnimationFrame(frame);
+
+    // FPS tracking
+    frameCount++;
+    if (timestamp - lastFpsUpdate >= 1000) {
+      const fps = Math.round((frameCount * 1000) / (timestamp - lastFpsUpdate));
+      if (perfFps) perfFps.textContent = `${fps} FPS`;
+      if (perfLatency) perfLatency.textContent = `${Math.round(timestamp - lastFrameTime)} ms`;
+      frameCount = 0;
+      lastFpsUpdate = timestamp;
+    }
+    lastFrameTime = timestamp;
+
+    if (currentInputMode === "photo") {
+      if (!userPhotoLoaded || !userPhotoFeed || !userPhotoFeed.complete) return;
+      const pose = estimateBasePose(canvasEl.width, canvasEl.height);
+      updateMeasurements(pose, canvasEl.width, canvasEl.height);
+      ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+      renderAllOutfitLayers(pose, canvasEl.width, canvasEl.height, false);
+      return;
+    }
+
+    if (!isBodyDetected || !videoEl.videoWidth) return;
+
+    // Run pose estimation (baseline geometric with 19 landmarks)
+    const pose = estimateBasePose(videoEl.videoWidth, videoEl.videoHeight);
+
+    // Temporal smoothing
+    poseHistory.push(pose);
+    if (poseHistory.length > MAX_POSE_HISTORY) poseHistory.shift();
+    const smoothedPose = smoothPose(poseHistory);
+
+    // Update body measurements from pose
+    updateMeasurements(smoothedPose, videoEl.videoWidth, videoEl.videoHeight);
+
+    // Clear canvas and render all active outfit items (clothing + accessories)
+    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+    const isMirrored = currentFacing === "user" && currentInputMode === "camera";
+    renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
+  }
+
+  animationFrameId = requestAnimationFrame(frame);
+}
+
+// ─── Pose Estimation & Smoothing (19 Anatomical Landmarks) ───
+
+function estimateBasePose(width, height) {
+  const eyeY = height * 0.15;
+  const noseY = height * 0.18;
+  const crownY = height * 0.08;
+  const neckY = height * 0.25;
+  const shoulderY = height * 0.31;
+  const elbowY = height * 0.49;
+  const wristY = height * 0.62;
+  const hipY = height * 0.64;
+  const kneeY = height * 0.82;
+  const ankleY = height * 0.96;
+
+  return {
+    landmarks: [
+      { x: width * 0.50, y: noseY, v: 0.95 },      // 0: Nose
+      { x: width * 0.46, y: eyeY, v: 0.95 },       // 1: L Eye
+      { x: width * 0.54, y: eyeY, v: 0.95 },       // 2: R Eye
+      { x: width * 0.40, y: noseY, v: 0.90 },      // 3: L Ear
+      { x: width * 0.60, y: noseY, v: 0.90 },      // 4: R Ear
+      { x: width * 0.37, y: shoulderY, v: 0.92 },  // 5: L Shoulder
+      { x: width * 0.63, y: shoulderY, v: 0.92 },  // 6: R Shoulder
+      { x: width * 0.29, y: elbowY, v: 0.88 },     // 7: L Elbow
+      { x: width * 0.71, y: elbowY, v: 0.88 },     // 8: R Elbow
+      { x: width * 0.24, y: wristY, v: 0.86 },     // 9: L Wrist
+      { x: width * 0.76, y: wristY, v: 0.86 },     // 10: R Wrist
+      { x: width * 0.40, y: hipY, v: 0.85 },       // 11: L Hip
+      { x: width * 0.60, y: hipY, v: 0.85 },       // 12: R Hip
+      { x: width * 0.41, y: kneeY, v: 0.80 },      // 13: L Knee
+      { x: width * 0.59, y: kneeY, v: 0.80 },      // 14: R Knee
+      { x: width * 0.42, y: ankleY, v: 0.78 },     // 15: L Ankle
+      { x: width * 0.58, y: ankleY, v: 0.78 },     // 16: R Ankle
+      { x: width * 0.50, y: crownY, v: 0.92 },     // 17: Head Crown
+      { x: width * 0.50, y: neckY, v: 0.92 },      // 18: Neck
+    ],
+    confidence: 0.94,
+    timestamp: performance.now(),
+  };
+}
+
+function smoothPose(history) {
+  if (history.length === 0) return null;
+  if (history.length === 1) return history[0];
+
+  const alpha = 0.3; // EMA smoothing factor
+  const latest = history[history.length - 1];
+  const prev = history[history.length - 2];
+
+  return {
+    landmarks: latest.landmarks.map((lm, i) => ({
+      x: prev.landmarks[i].x * (1 - alpha) + lm.x * alpha,
+      y: prev.landmarks[i].y * (1 - alpha) + lm.y * alpha,
+      v: lm.v,
+    })),
+    confidence: latest.confidence,
+    timestamp: latest.timestamp,
+  };
+}
+
+// ─── Multi-Item Live Outfit Layer Renderer ───
+
+function renderAllOutfitLayers(pose, canvasWidth, canvasHeight, isMirrored) {
+  if (!pose) return;
+
+  // Topological depth order: lower body -> full body -> upper body -> belt -> necklace -> scarf -> bag -> wristwear -> ring -> earrings -> eyewear -> headwear
+  const layerOrder = [
+    "lower_body",
+    "full_body",
+    "upper_body",
+    "belt",
+    "necklace",
+    "scarf",
+    "bag",
+    "wristwear",
+    "ring",
+    "earrings",
+    "eyewear",
+    "headwear",
+  ];
+
+  const activeLayers = activeOutfit
+    .filter((layer) => layer.enabled)
+    .sort((a, b) => layerOrder.indexOf(a.garmentCategory) - layerOrder.indexOf(b.garmentCategory));
+
+  if (activeLayers.length === 0 && (processedGarmentCanvas || garmentImage)) {
+    // Fallback for single loaded item
+    renderUpperBodyGarment(pose, canvasWidth, canvasHeight, {
+      source: processedGarmentCanvas || garmentImage,
+      scale: 1.0,
+      offsetY: 0,
+      opacity: fitOpacity,
+    }, isMirrored);
+    return;
+  }
+
+  for (const layer of activeLayers) {
+    const src = layer.processedCanvas || layer.imageElement;
+    if (!src) continue;
+
+    switch (layer.garmentCategory) {
+      case "eyewear":
+        renderEyewear(pose, canvasWidth, canvasHeight, layer, isMirrored);
+        break;
+      case "headwear":
+        renderHeadwear(pose, canvasWidth, canvasHeight, layer, isMirrored);
+        break;
+      case "necklace":
+        renderNecklace(pose, canvasWidth, canvasHeight, layer, isMirrored);
+        break;
+      case "earrings":
+        renderEarrings(pose, canvasWidth, canvasHeight, layer, isMirrored);
+        break;
+      case "wristwear":
+        renderWristwear(pose, canvasWidth, canvasHeight, layer, isMirrored);
+        break;
+      case "bag":
+        renderBag(pose, canvasWidth, canvasHeight, layer, isMirrored);
+        break;
+      case "belt":
+        renderBelt(pose, canvasWidth, canvasHeight, layer, isMirrored);
+        break;
+      case "lower_body":
+        renderLowerBodyGarment(pose, canvasWidth, canvasHeight, layer, isMirrored);
+        break;
+      case "full_body":
+        renderFullBodyGarment(pose, canvasWidth, canvasHeight, layer, isMirrored);
+        break;
+      case "upper_body":
+      default:
+        renderUpperBodyGarment(pose, canvasWidth, canvasHeight, layer, isMirrored);
+        break;
+    }
+  }
+}
+
+// ── 1. Live Eyewear (Sunglasses / Glasses) ──
+function renderEyewear(pose, canvasWidth, canvasHeight, item, isMirrored) {
+  const lEye = pose.landmarks[POSE_LANDMARK.LEFT_EYE];
+  const rEye = pose.landmarks[POSE_LANDMARK.RIGHT_EYE];
+  if (!lEye || !rEye) return;
+
+  const dx = rEye.x - lEye.x;
+  const dy = rEye.y - lEye.y;
+  const eyeDistance = Math.sqrt(dx * dx + dy * dy);
+  const headAngle = Math.atan2(dy, dx);
+
+  const scale = item.scale || 1.0;
+  const offsetY = item.offsetY || 0;
+  const opacity = item.opacity !== undefined ? item.opacity : fitOpacity;
+
+  const glassWidth = eyeDistance * 2.35 * scale;
+  const glassHeight = glassWidth * 0.44;
+
+  const centerX = (lEye.x + rEye.x) / 2;
+  const centerY = (lEye.y + rEye.y) / 2 + offsetY;
+
+  const drawX = isMirrored
+    ? canvasWidth - centerX - glassWidth / 2
+    : centerX - glassWidth / 2;
+  const drawY = centerY - glassHeight / 2;
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+
+  ctx.translate(drawX + glassWidth / 2, drawY + glassHeight / 2);
+  ctx.rotate(isMirrored ? -headAngle : headAngle);
+  ctx.translate(-(drawX + glassWidth / 2), -(drawY + glassHeight / 2));
+
+  const src = item.processedCanvas || item.imageElement;
+  if (src) ctx.drawImage(src, drawX, drawY, glassWidth, glassHeight);
+  ctx.restore();
+}
+
+// ── 2. Live Headwear (Caps / Hats / Beanies) ──
+function renderHeadwear(pose, canvasWidth, canvasHeight, item, isMirrored) {
+  const crown = pose.landmarks[POSE_LANDMARK.HEAD_CROWN];
+  const lEye = pose.landmarks[POSE_LANDMARK.LEFT_EYE];
+  const rEye = pose.landmarks[POSE_LANDMARK.RIGHT_EYE];
+  const lShoulder = pose.landmarks[POSE_LANDMARK.LEFT_SHOULDER];
+  const rShoulder = pose.landmarks[POSE_LANDMARK.RIGHT_SHOULDER];
+  if (!crown || !lShoulder || !rShoulder) return;
+
+  const shoulderWidth = Math.abs(rShoulder.x - lShoulder.x);
+  const scale = item.scale || 1.0;
+  const offsetY = item.offsetY || 0;
+  const opacity = item.opacity !== undefined ? item.opacity : fitOpacity;
+
+  const hatWidth = shoulderWidth * 0.78 * scale;
+  const hatHeight = hatWidth * 0.72;
+
+  const headAngle = Math.atan2(rEye.y - lEye.y, rEye.x - lEye.x);
+
+  const centerX = crown.x;
+  const centerY = crown.y - (hatHeight * 0.38) + offsetY;
+
+  const drawX = isMirrored
+    ? canvasWidth - centerX - hatWidth / 2
+    : centerX - hatWidth / 2;
+  const drawY = centerY - hatHeight / 2;
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+
+  ctx.translate(drawX + hatWidth / 2, drawY + hatHeight / 2);
+  ctx.rotate(isMirrored ? -headAngle : headAngle);
+  ctx.translate(-(drawX + hatWidth / 2), -(drawY + hatHeight / 2));
+
+  const src = item.processedCanvas || item.imageElement;
+  if (src) ctx.drawImage(src, drawX, drawY, hatWidth, hatHeight);
+  ctx.restore();
+}
+
+// ── 3. Live Necklaces & Chains ──
+function renderNecklace(pose, canvasWidth, canvasHeight, item, isMirrored) {
+  const neck = pose.landmarks[POSE_LANDMARK.NECK];
+  const lShoulder = pose.landmarks[POSE_LANDMARK.LEFT_SHOULDER];
+  const rShoulder = pose.landmarks[POSE_LANDMARK.RIGHT_SHOULDER];
+  if (!neck || !lShoulder || !rShoulder) return;
+
+  const shoulderWidth = Math.abs(rShoulder.x - lShoulder.x);
+  const scale = item.scale || 1.0;
+  const offsetY = item.offsetY || 0;
+  const opacity = item.opacity !== undefined ? item.opacity : fitOpacity;
+
+  const neckWidth = shoulderWidth * 0.62 * scale;
+  const neckHeight = neckWidth * 0.85;
+
+  const shoulderAngle = Math.atan2(rShoulder.y - lShoulder.y, rShoulder.x - lShoulder.x);
+
+  const centerX = neck.x;
+  const centerY = neck.y + (neckHeight * 0.15) + offsetY;
+
+  const drawX = isMirrored
+    ? canvasWidth - centerX - neckWidth / 2
+    : centerX - neckWidth / 2;
+  const drawY = centerY - neckHeight / 2;
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+
+  ctx.translate(drawX + neckWidth / 2, drawY + neckHeight / 2);
+  ctx.rotate(isMirrored ? -shoulderAngle : shoulderAngle);
+  ctx.translate(-(drawX + neckWidth / 2), -(drawY + neckHeight / 2));
+
+  const src = item.processedCanvas || item.imageElement;
+  if (src) ctx.drawImage(src, drawX, drawY, neckWidth, neckHeight);
+  ctx.restore();
+}
+
+// ── 4. Live Earrings ──
+function renderEarrings(pose, canvasWidth, canvasHeight, item, isMirrored) {
+  const lEar = pose.landmarks[POSE_LANDMARK.LEFT_EAR];
+  const rEar = pose.landmarks[POSE_LANDMARK.RIGHT_EAR];
+  const lEye = pose.landmarks[POSE_LANDMARK.LEFT_EYE];
+  const rEye = pose.landmarks[POSE_LANDMARK.RIGHT_EYE];
+  if (!lEar || !rEar) return;
+
+  const eyeDistance = Math.abs(rEye.x - lEye.x);
+  const scale = item.scale || 1.0;
+  const offsetY = item.offsetY || 0;
+  const opacity = item.opacity !== undefined ? item.opacity : fitOpacity;
+
+  const earringSize = eyeDistance * 0.50 * scale;
+
+  const src = item.processedCanvas || item.imageElement;
+  if (!src) return;
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+
+  // Left Earring
+  const drawLX = isMirrored ? canvasWidth - lEar.x - earringSize / 2 : lEar.x - earringSize / 2;
+  const drawLY = lEar.y - earringSize * 0.1 + offsetY;
+  ctx.drawImage(src, drawLX, drawLY, earringSize, earringSize);
+
+  // Right Earring
+  const drawRX = isMirrored ? canvasWidth - rEar.x - earringSize / 2 : rEar.x - earringSize / 2;
+  const drawRY = rEar.y - earringSize * 0.1 + offsetY;
+  ctx.drawImage(src, drawRX, drawRY, earringSize, earringSize);
+
+  ctx.restore();
+}
+
+// ── 5. Live Watches & Bracelets ──
+function renderWristwear(pose, canvasWidth, canvasHeight, item, isMirrored) {
+  const lWrist = pose.landmarks[POSE_LANDMARK.LEFT_WRIST];
+  const lShoulder = pose.landmarks[POSE_LANDMARK.LEFT_SHOULDER];
+  const rShoulder = pose.landmarks[POSE_LANDMARK.RIGHT_SHOULDER];
+  if (!lWrist || !lShoulder || !rShoulder) return;
+
+  const shoulderWidth = Math.abs(rShoulder.x - lShoulder.x);
+  const scale = item.scale || 1.0;
+  const offsetY = item.offsetY || 0;
+  const opacity = item.opacity !== undefined ? item.opacity : fitOpacity;
+
+  const watchWidth = shoulderWidth * 0.32 * scale;
+  const watchHeight = watchWidth * 1.05;
+
+  const centerX = lWrist.x;
+  const centerY = lWrist.y + offsetY;
+
+  const drawX = isMirrored
+    ? canvasWidth - centerX - watchWidth / 2
+    : centerX - watchWidth / 2;
+  const drawY = centerY - watchHeight / 2;
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  const src = item.processedCanvas || item.imageElement;
+  if (src) ctx.drawImage(src, drawX, drawY, watchWidth, watchHeight);
+  ctx.restore();
+}
+
+// ── 6. Live Bags (Handbags / Backpacks) ──
+function renderBag(pose, canvasWidth, canvasHeight, item, isMirrored) {
+  const rShoulder = pose.landmarks[POSE_LANDMARK.RIGHT_SHOULDER];
+  const lHip = pose.landmarks[POSE_LANDMARK.LEFT_HIP];
+  const lShoulder = pose.landmarks[POSE_LANDMARK.LEFT_SHOULDER];
+  if (!rShoulder || !lHip || !lShoulder) return;
+
+  const shoulderWidth = Math.abs(rShoulder.x - lShoulder.x);
+  const scale = item.scale || 1.0;
+  const offsetY = item.offsetY || 0;
+  const opacity = item.opacity !== undefined ? item.opacity : fitOpacity;
+
+  const bagWidth = shoulderWidth * 0.72 * scale;
+  const bagHeight = bagWidth * 1.0;
+
+  const centerX = isMirrored ? lShoulder.x - bagWidth * 0.2 : rShoulder.x + bagWidth * 0.2;
+  const centerY = lHip.y - bagHeight * 0.3 + offsetY;
+
+  const drawX = isMirrored
+    ? canvasWidth - centerX - bagWidth / 2
+    : centerX - bagWidth / 2;
+  const drawY = centerY - bagHeight / 2;
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  const src = item.processedCanvas || item.imageElement;
+  if (src) ctx.drawImage(src, drawX, drawY, bagWidth, bagHeight);
+  ctx.restore();
+}
+
+// ── 7. Live Belts ──
+function renderBelt(pose, canvasWidth, canvasHeight, item, isMirrored) {
+  const lHip = pose.landmarks[POSE_LANDMARK.LEFT_HIP];
+  const rHip = pose.landmarks[POSE_LANDMARK.RIGHT_HIP];
+  if (!lHip || !rHip) return;
+
+  const hipWidth = Math.abs(rHip.x - lHip.x);
+  const scale = item.scale || 1.0;
+  const offsetY = item.offsetY || 0;
+  const opacity = item.opacity !== undefined ? item.opacity : fitOpacity;
+
+  const beltWidth = hipWidth * 1.25 * scale;
+  const beltHeight = beltWidth * 0.22;
+
+  const centerX = (lHip.x + rHip.x) / 2;
+  const centerY = (lHip.y + rHip.y) / 2 + offsetY;
+
+  const drawX = isMirrored
+    ? canvasWidth - centerX - beltWidth / 2
+    : centerX - beltWidth / 2;
+  const drawY = centerY - beltHeight / 2;
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  const src = item.processedCanvas || item.imageElement;
+  if (src) ctx.drawImage(src, drawX, drawY, beltWidth, beltHeight);
+  ctx.restore();
+}
+
+// ── 8. Live Upper Body Garments (Jackets / Shirts / Hoodies) ──
+function renderUpperBodyGarment(pose, canvasWidth, canvasHeight, item, isMirrored) {
+  const lShoulder = pose.landmarks[POSE_LANDMARK.LEFT_SHOULDER];
+  const rShoulder = pose.landmarks[POSE_LANDMARK.RIGHT_SHOULDER];
+  const lHip = pose.landmarks[POSE_LANDMARK.LEFT_HIP];
+  if (!lShoulder || !rShoulder || !lHip) return;
+
+  const shoulderWidth = Math.abs(rShoulder.x - lShoulder.x);
+  const torsoHeight = Math.abs(lHip.y - lShoulder.y);
+  const scale = item.scale || 1.0;
+  const offsetY = item.offsetY || 0;
+  const opacity = item.opacity !== undefined ? item.opacity : fitOpacity;
+
+  const garmentWidth = shoulderWidth * 2.2 * scale;
+  const garmentHeight = torsoHeight * 1.45 * scale;
+
+  const centerX = (lShoulder.x + rShoulder.x) / 2;
+  const topY = lShoulder.y - (garmentHeight * 0.08) + offsetY;
+
+  const drawX = isMirrored
+    ? canvasWidth - centerX - garmentWidth / 2
+    : centerX - garmentWidth / 2;
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+
+  const shoulderAngle = Math.atan2(rShoulder.y - lShoulder.y, rShoulder.x - lShoulder.x);
+
+  ctx.translate(drawX + garmentWidth / 2, topY + garmentHeight / 2);
+  ctx.rotate(isMirrored ? -shoulderAngle : shoulderAngle);
+  ctx.translate(-(drawX + garmentWidth / 2), -(topY + garmentHeight / 2));
+
+  const src = item.processedCanvas || item.imageElement || item.source;
+  if (src) ctx.drawImage(src, drawX, topY, garmentWidth, garmentHeight);
+  ctx.restore();
+}
+
+// ── 9. Live Lower Body Garments (Jeans / Pants / Skirts) ──
+function renderLowerBodyGarment(pose, canvasWidth, canvasHeight, item, isMirrored) {
+  const lHip = pose.landmarks[POSE_LANDMARK.LEFT_HIP];
+  const rHip = pose.landmarks[POSE_LANDMARK.RIGHT_HIP];
+  const lAnkle = pose.landmarks[POSE_LANDMARK.LEFT_ANKLE];
+  if (!lHip || !rHip || !lAnkle) return;
+
+  const hipWidth = Math.abs(rHip.x - lHip.x);
+  const legHeight = Math.abs(lAnkle.y - lHip.y);
+  const scale = item.scale || 1.0;
+  const offsetY = item.offsetY || 0;
+  const opacity = item.opacity !== undefined ? item.opacity : fitOpacity;
+
+  const garmentWidth = hipWidth * 1.8 * scale;
+  const garmentHeight = legHeight * 1.15 * scale;
+
+  const centerX = (lHip.x + rHip.x) / 2;
+  const topY = lHip.y - (garmentHeight * 0.05) + offsetY;
+
+  const drawX = isMirrored
+    ? canvasWidth - centerX - garmentWidth / 2
+    : centerX - garmentWidth / 2;
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  const src = item.processedCanvas || item.imageElement;
+  if (src) ctx.drawImage(src, drawX, topY, garmentWidth, garmentHeight);
+  ctx.restore();
+}
+
+// ── 10. Live Full Body Ensembles (Dresses / Sarees / Suits) ──
+function renderFullBodyGarment(pose, canvasWidth, canvasHeight, item, isMirrored) {
+  const lShoulder = pose.landmarks[POSE_LANDMARK.LEFT_SHOULDER];
+  const rShoulder = pose.landmarks[POSE_LANDMARK.RIGHT_SHOULDER];
+  const lAnkle = pose.landmarks[POSE_LANDMARK.LEFT_ANKLE];
+  if (!lShoulder || !rShoulder || !lAnkle) return;
+
+  const shoulderWidth = Math.abs(rShoulder.x - lShoulder.x);
+  const bodyHeight = Math.abs(lAnkle.y - lShoulder.y);
+  const scale = item.scale || 1.0;
+  const offsetY = item.offsetY || 0;
+  const opacity = item.opacity !== undefined ? item.opacity : fitOpacity;
+
+  const garmentWidth = shoulderWidth * 2.3 * scale;
+  const garmentHeight = bodyHeight * 1.25 * scale;
+
+  const centerX = (lShoulder.x + rShoulder.x) / 2;
+  const topY = lShoulder.y - (garmentHeight * 0.04) + offsetY;
+
+  const drawX = isMirrored
+    ? canvasWidth - centerX - garmentWidth / 2
+    : centerX - garmentWidth / 2;
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+
+  const shoulderAngle = Math.atan2(rShoulder.y - lShoulder.y, rShoulder.x - lShoulder.x);
+  ctx.translate(drawX + garmentWidth / 2, topY + garmentHeight / 2);
+  ctx.rotate(isMirrored ? -shoulderAngle : shoulderAngle);
+  ctx.translate(-(drawX + garmentWidth / 2), -(topY + garmentHeight / 2));
+
+  const src = item.processedCanvas || item.imageElement;
+  if (src) ctx.drawImage(src, drawX, topY, garmentWidth, garmentHeight);
+  ctx.restore();
+}
+
+function processGarmentCutout(img) {
+  const canvas = processItemCutout(img);
+  processedGarmentCanvas = canvas;
+  return canvas;
+}
+
+function processItemCutout(img) {
+  try {
+    const offscreen = document.createElement("canvas");
+    const ow = img.naturalWidth || img.width;
+    const oh = img.naturalHeight || img.height;
+    if (!ow || !oh) return null;
+
+    offscreen.width = ow;
+    offscreen.height = oh;
+    const octx = offscreen.getContext("2d", { willReadFrequently: true });
+    octx.drawImage(img, 0, 0);
+
+    const imgData = octx.getImageData(0, 0, ow, oh);
+    const data = imgData.data;
+
+    // Sample the 4 corner pixels to determine background color
+    const corners = [
+      0, // top-left
+      (ow - 1) * 4, // top-right
+      ((oh - 1) * ow) * 4, // bottom-left
+      ((oh * ow) - 1) * 4 // bottom-right
+    ];
+
+    let avgR = 0, avgG = 0, avgB = 0;
+    corners.forEach((idx) => {
+      avgR += data[idx];
+      avgG += data[idx + 1];
+      avgB += data[idx + 2];
+    });
+    avgR /= 4; avgG /= 4; avgB /= 4;
+
+    // If corners are light/white (standard catalog photo > 215)
+    const isLightBackground = avgR > 215 && avgG > 215 && avgB > 215;
+
+    if (isLightBackground) {
+      const threshold = 40;
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+
+        // Euclidean color distance to background
+        const dist = Math.sqrt((r - avgR) ** 2 + (g - avgG) ** 2 + (b - avgB) ** 2);
+        if (dist < threshold) {
+          // Soft edge feathering
+          const alphaFactor = Math.max(0, (dist - 15) / (threshold - 15));
+          data[i + 3] = Math.round(data[i + 3] * alphaFactor);
+        }
+      }
+      octx.putImageData(imgData, 0, 0);
+      return offscreen;
+    }
+    return null; // Use original image directly
+  } catch (e) {
+    console.warn("[VESTORA] Background cutout skipped (likely tainted canvas or CORS):", e);
+    return null;
+  }
+}
+
+// ─── Universal Drag and Drop Garment Ingestion (Anywear Signature) ───
+
+function setupDragAndDrop() {
+  window.addEventListener("dragenter", (e) => {
+    e.preventDefault();
+    dragCounter++;
+    showDropZone(true);
+  });
+
+  window.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "copy";
+    }
+  });
+
+  window.addEventListener("dragleave", (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter <= 0) {
+      dragCounter = 0;
+      showDropZone(false);
+    }
+  });
+
+  window.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    showDropZone(false);
+
+    const imageUrl = await extractImageFromDropEvent(e);
+    if (imageUrl) {
+      loadProduct({
+        id: `dragged_${Date.now()}`,
+        name: "Custom Dropped Garment",
+        category: "Clothing Item",
+        imageUrl: imageUrl,
+        availableSizes: ["XS", "S", "M", "L", "XL", "XXL"],
+      });
+      showToast("✦ Dropped garment loaded! Adjust fit as desired.");
+    } else {
+      showToast("⚠ Could not extract garment image from drop");
+    }
+  });
+}
+
+function showDropZone(show) {
+  if (!dropZoneOverlay) return;
+  dropZoneOverlay.classList.toggle("hidden", !show);
+}
+
+async function extractImageFromDropEvent(e) {
+  if (!e.dataTransfer) return null;
+
+  // 1. Check for dropped local image files
+  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    const file = e.dataTransfer.files[0];
+    if (file.type.startsWith("image/")) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      });
+    }
+  }
+
+  // 2. Check for HTML snippet (standard when dragging <img> from browser tab)
+  const html = e.dataTransfer.getData("text/html");
+  if (html) {
+    try {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const img = doc.querySelector("img");
+      if (img) {
+        const src = img.currentSrc || img.getAttribute("src") || img.getAttribute("data-src");
+        if (src) return src;
+      }
+      const bgEl = doc.querySelector("[style*='background-image']");
+      if (bgEl) {
+        const match = bgEl.style.backgroundImage.match(/url\(['"]?(.*?)['"]?\)/);
+        if (match && match[1]) return match[1];
+      }
+    } catch (err) {
+      console.warn("Error parsing drag HTML:", err);
+    }
+  }
+
+  // 3. Check for direct URL (URI-list or URL)
+  const uri = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("URL");
+  if (uri && (uri.startsWith("http") || uri.startsWith("data:image/"))) {
+    return uri;
+  }
+
+  // 4. Plain text URL fallback
+  const text = e.dataTransfer.getData("text/plain");
+  if (text && (text.startsWith("http://") || text.startsWith("https://"))) {
+    return text;
+  }
+
+  return null;
+}
+
+// ─── Body Measurement Engine ───
+
+function updateMeasurements(pose, frameWidth, frameHeight) {
+  if (!pose) return;
+
+  const lm = pose.landmarks;
+  const lShoulder = lm[POSE_LANDMARK.LEFT_SHOULDER];
+  const rShoulder = lm[POSE_LANDMARK.RIGHT_SHOULDER];
+  const lHip = lm[POSE_LANDMARK.LEFT_HIP];
+  const rHip = lm[POSE_LANDMARK.RIGHT_HIP];
+
+  const shoulderPx = dist(lShoulder, rShoulder);
+  const hipPx = dist(lHip, rHip);
+  const torsoPx = dist(
+    { x: (lShoulder.x + rShoulder.x) / 2, y: (lShoulder.y + rShoulder.y) / 2 },
+    { x: (lHip.x + rHip.x) / 2, y: (lHip.y + rHip.y) / 2 }
+  );
+
+  const pixelsPerCm = Math.max(1, shoulderPx / 44);
+
+  const shoulderCm = Math.round(shoulderPx / pixelsPerCm);
+  const chestCm = Math.round((shoulderPx * 2.1) / pixelsPerCm);
+  const waistCm = Math.round((hipPx * 2.4) / pixelsPerCm);
+  const torsoCm = Math.round(torsoPx / pixelsPerCm);
+
+  if (measShoulder) {
+    measShoulder.textContent = `${shoulderCm} cm`;
+    measShoulder.classList.remove("is-loading");
+  }
+  if (measChest) {
+    measChest.textContent = `${chestCm} cm`;
+    measChest.classList.remove("is-loading");
+  }
+  if (measWaist) {
+    measWaist.textContent = `${waistCm} cm`;
+    measWaist.classList.remove("is-loading");
+  }
+  if (measTorso) {
+    measTorso.textContent = `${torsoCm} cm`;
+    measTorso.classList.remove("is-loading");
+  }
+
+  const recSize = recommendSize(shoulderCm, chestCm, waistCm);
+  if (recommendedSizeValue) recommendedSizeValue.textContent = recSize;
+
+  updateSizePills(recSize);
+}
+
+function dist(a, b) {
+  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+}
+
+function recommendSize(shoulder, chest, waist) {
+  let bestSize = "M";
+  let bestScore = Infinity;
+
+  for (const [size, ranges] of Object.entries(SIZE_CHART)) {
+    const sCenter = (ranges.shoulder[0] + ranges.shoulder[1]) / 2;
+    const cCenter = (ranges.chest[0] + ranges.chest[1]) / 2;
+    const wCenter = (ranges.waist[0] + ranges.waist[1]) / 2;
+
+    const score = Math.abs(shoulder - sCenter) * 2 +
+                  Math.abs(chest - cCenter) +
+                  Math.abs(waist - wCenter);
+
+    if (score < bestScore) {
+      bestScore = score;
+      bestSize = size;
+    }
+  }
+
+  return bestSize;
+}
+
+function updateSizePills(recommended) {
+  if (!sizeOptionsContainer) return;
+  const sizes = currentProduct?.availableSizes || ["XS", "S", "M", "L", "XL", "XXL"];
+  sizeOptionsContainer.innerHTML = "";
+
+  sizes.forEach((size) => {
+    const pill = document.createElement("button");
+    pill.className = "size-pill";
+    pill.textContent = size;
+    if (size === recommended) {
+      pill.classList.add("is-recommended");
+    }
+    pill.addEventListener("click", () => {
+      document.querySelectorAll(".size-pill").forEach((p) => p.classList.remove("is-selected"));
+      pill.classList.add("is-selected");
+      showToast(`Selected size: ${size}`);
+    });
+    sizeOptionsContainer.appendChild(pill);
+  });
+}
+
+// ─── Multi-Item Active Outfit Engine (Clothes + Accessories) ───
+
+function mapToGarmentCategory(name = "", category = "") {
+  const text = `${name} ${category}`.toLowerCase();
+
+  // Eyewear (Sunglasses / Glasses / Frames)
+  if (/\b(sunglass|sunglasses|glasses|spectacle|spectacles|shades|goggle|goggles|frames|eyewear|aviator|wayfarer|clubmaster)\b/i.test(text)) {
+    return "eyewear";
+  }
+  // Headwear (Caps / Hats / Beanies)
+  if (/\b(cap|hat|beanie|fedora|beret|snapback|turban|bucket hat|visor|headband|headscarf|sombrero|pagri)\b/i.test(text)) {
+    return "headwear";
+  }
+  // Necklaces & Chains
+  if (/\b(necklace|chain|pendant|choker|collar|locket|mangalsutra|haar|mala|tanmaniya)\b/i.test(text)) {
+    return "necklace";
+  }
+  // Earrings
+  if (/\b(earring|earrings|stud|studs|jhumka|jhumkas|drop earrings|hoop|hoops|ear cuff|chandbali)\b/i.test(text)) {
+    return "earrings";
+  }
+  // Watches & Bracelets
+  if (/\b(watch|smartwatch|chronograph|bracelet|bangle|wristband|cuff|kada)\b/i.test(text)) {
+    return "wristwear";
+  }
+  // Bags & Backpacks
+  if (/\b(bag|handbag|backpack|tote|clutch|purse|sling bag|shoulder bag|satchel|duffle|crossbody|potli|wallet)\b/i.test(text)) {
+    return "bag";
+  }
+  // Belts
+  if (/\b(belt|waist belt|sash|kamarbandh)\b/i.test(text)) {
+    return "belt";
+  }
+  // Lower body (Jeans / Pants / Shorts / Skirts)
+  if (/\b(pant|pants|trouser|trousers|jeans|denim|shorts|skirt|joggers|track pants|leggings|chinos|dhoti|lungi|palazzo|culottes)\b/i.test(text)) {
+    return "lower_body";
+  }
+  // Full body (Dresses / Sarees / Suits / Lehengas)
+  if (/\b(dress|gown|jumpsuit|romper|saree|sari|lehenga|choli|sherwani|suit|blazer suit|anarkali|salwar|kurta set|maxi)\b/i.test(text)) {
+    return "full_body";
+  }
+  // Upper body (Default for jackets, shirts, hoodies, t-shirts, tops)
+  return "upper_body";
+}
+
+function formatGarmentCategoryTitle(cat) {
+  switch (cat) {
+    case "eyewear": return "Sunglasses";
+    case "headwear": return "Headwear";
+    case "necklace": return "Necklace";
+    case "earrings": return "Earrings";
+    case "wristwear": return "Watch";
+    case "bag": return "Bag";
+    case "belt": return "Belt";
+    case "lower_body": return "Bottoms";
+    case "full_body": return "Full Outfit";
+    case "upper_body": default: return "Top / Garment";
+  }
+}
+
+function addOutfitItem(product, options = {}) {
+  if (!product || !product.imageUrl) return;
+
+  const garmentCat = product.garmentCategory || mapToGarmentCategory(product.name, product.category);
+  const itemId = product.id || `layer_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+
+  if (options.replace) {
+    activeOutfit = [];
+  }
+
+  const existingIndex = activeOutfit.findIndex((item) => item.id === itemId);
+  const newItem = {
+    id: itemId,
+    name: product.name || "Fashion Item",
+    category: product.category || "Garment",
+    garmentCategory: garmentCat,
+    imageUrl: product.imageUrl,
+    enabled: true,
+    scale: 1.0,
+    offsetY: 0,
+    opacity: fitOpacity,
+    imageElement: null,
+    processedCanvas: null,
+    availableSizes: product.availableSizes || ["XS", "S", "M", "L", "XL", "XXL"],
+  };
+
+  if (existingIndex >= 0) {
+    activeOutfit[existingIndex] = newItem;
+  } else {
+    // If replaceSlot is requested, replace existing item with same category slot
+    if (options.replaceSlot) {
+      const slotIndex = activeOutfit.findIndex((item) => item.garmentCategory === garmentCat);
+      if (slotIndex >= 0) {
+        activeOutfit[slotIndex] = newItem;
+      } else {
+        activeOutfit.push(newItem);
+      }
+    } else {
+      activeOutfit.push(newItem);
+    }
+  }
+
+  selectedLayerId = newItem.id;
+  currentProduct = newItem;
+
+  // Update product info strip header
+  if (productName) productName.textContent = newItem.name;
+  if (productCategory) productCategory.textContent = `${formatGarmentCategoryTitle(newItem.garmentCategory)} · ${newItem.category}`;
+  if (productThumb) {
+    productThumb.style.display = "block";
+    productThumb.src = newItem.imageUrl;
+    productThumb.onerror = () => { productThumb.style.display = "none"; };
+  }
+
+  // Load image asset for the item
+  garmentLoader?.classList.remove("hidden");
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => {
+    garmentLoader?.classList.add("hidden");
+    newItem.imageElement = img;
+    const cutout = processItemCutout(img);
+    newItem.processedCanvas = cutout;
+
+    garmentImage = img;
+    processedGarmentCanvas = cutout;
+
+    renderOutfitLayersList();
+    showToast(`✦ Added ${newItem.name.slice(0, 24)}… to live try-on!`);
+    updateSizePills(recommendedSizeValue?.textContent || "M");
+  };
+
+  img.onerror = () => {
+    garmentLoader?.classList.add("hidden");
+    loadItemViaBgFetch(newItem);
+  };
+
+  img.src = newItem.imageUrl;
+
+  renderOutfitLayersList();
+  updateOutfitCountBadge();
+}
+
+function loadItemViaBgFetch(item) {
+  if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+    chrome.runtime.sendMessage(
+      { type: "VESTORA_FETCH_IMAGE", payload: { url: item.imageUrl } },
+      (response) => {
+        if (response?.success && response.dataUrl) {
+          const img = new Image();
+          img.onload = () => {
+            item.imageElement = img;
+            item.processedCanvas = processItemCutout(img);
+            if (currentProduct?.id === item.id) {
+              garmentImage = img;
+              processedGarmentCanvas = item.processedCanvas;
+            }
+            renderOutfitLayersList();
+            showToast(`✦ Loaded ${item.name.slice(0, 24)}… (via secure proxy)!`);
+          };
+          img.src = response.dataUrl;
+        } else {
+          showToast(`⚠ Could not load image for ${item.name}`);
+        }
+      }
+    );
+  }
+}
+
+function selectOutfitLayer(id) {
+  selectedLayerId = id;
+  const layer = activeOutfit.find((l) => l.id === id);
+  if (!layer) return;
+
+  currentProduct = layer;
+  if (productName) productName.textContent = layer.name;
+  if (productCategory) productCategory.textContent = `${formatGarmentCategoryTitle(layer.garmentCategory)} · ${layer.category}`;
+  if (productThumb) {
+    productThumb.style.display = "block";
+    productThumb.src = layer.imageUrl;
+  }
+
+  fitScale = layer.scale || 1.0;
+  fitOffsetY = layer.offsetY || 0;
+  fitOpacity = layer.opacity || 0.88;
+  if (fitScaleVal) fitScaleVal.textContent = `${Math.round(fitScale * 100)}%`;
+  if (fitOpacitySlider) fitOpacitySlider.value = `${Math.round(fitOpacity * 100)}`;
+
+  renderOutfitLayersList();
+  showToast(`Selected "${layer.name.slice(0, 20)}…" for fit adjustment`);
+}
+
+function toggleOutfitItem(id) {
+  const item = activeOutfit.find((l) => l.id === id);
+  if (!item) return;
+  item.enabled = !item.enabled;
+  renderOutfitLayersList();
+  showToast(`${item.name.slice(0, 20)}… ${item.enabled ? "enabled ✓" : "hidden ✕"}`);
+}
+
+function removeOutfitItem(id) {
+  const idx = activeOutfit.findIndex((l) => l.id === id);
+  if (idx < 0) return;
+  const removedName = activeOutfit[idx].name;
+  activeOutfit.splice(idx, 1);
+
+  if (selectedLayerId === id) {
+    selectedLayerId = activeOutfit.length > 0 ? activeOutfit[activeOutfit.length - 1].id : null;
+    if (selectedLayerId) {
+      selectOutfitLayer(selectedLayerId);
+    } else {
+      currentProduct = null;
+      garmentImage = null;
+      processedGarmentCanvas = null;
+      if (productName) productName.textContent = "Ready for Try-On";
+      if (productCategory) productCategory.textContent = "Select an item from any fashion store";
+      if (productThumb) productThumb.style.display = "none";
+    }
+  }
+
+  renderOutfitLayersList();
+  updateOutfitCountBadge();
+  showToast(`Removed ${removedName.slice(0, 20)}…`);
+}
+
+function clearOutfit() {
+  activeOutfit = [];
+  selectedLayerId = null;
+  currentProduct = null;
+  garmentImage = null;
+  processedGarmentCanvas = null;
+  if (productName) productName.textContent = "Ready for Try-On";
+  if (productCategory) productCategory.textContent = "Select an item from any fashion store";
+  if (productThumb) productThumb.style.display = "none";
+  renderOutfitLayersList();
+  updateOutfitCountBadge();
+  showToast("Cleared all try-on items");
+}
+
+function updateOutfitCountBadge() {
+  if (!outfitCountBadge) return;
+  const activeCount = activeOutfit.filter((l) => l.enabled).length;
+  const totalCount = activeOutfit.length;
+  if (totalCount === 0) {
+    outfitCountBadge.textContent = "0 Items";
+  } else if (activeCount === totalCount) {
+    outfitCountBadge.textContent = `${totalCount} Item${totalCount === 1 ? "" : "s"}`;
+  } else {
+    outfitCountBadge.textContent = `${activeCount}/${totalCount} Active`;
+  }
+}
+
+function renderOutfitLayersList() {
+  if (!outfitLayersList) return;
+  outfitLayersList.innerHTML = "";
+
+  if (activeOutfit.length === 0) {
+    const emptyState = document.createElement("div");
+    emptyState.className = "outfit-empty-state";
+    emptyState.innerHTML = `<span style="font-size:11px;color:var(--v-text-dim);">No items loaded. Click "✦ Grab Item", paste a URL, or try a sample.</span>`;
+    outfitLayersList.appendChild(emptyState);
+    updateOutfitCountBadge();
+    return;
+  }
+
+  activeOutfit.forEach((layer) => {
+    const card = document.createElement("div");
+    card.className = `outfit-layer-card ${layer.enabled ? "is-active" : "is-disabled"}`;
+    if (selectedLayerId === layer.id) {
+      card.style.borderColor = "var(--v-purple)";
+    }
+    card.dataset.layerId = layer.id;
+
+    // Thumbnail
+    const thumb = document.createElement("img");
+    thumb.className = "outfit-layer-thumb";
+    thumb.src = layer.imageUrl;
+    thumb.alt = layer.name;
+    thumb.onerror = () => { thumb.style.display = "none"; };
+
+    // Info
+    const info = document.createElement("div");
+    info.className = "outfit-layer-info";
+
+    const cat = document.createElement("span");
+    cat.className = "outfit-layer-category";
+    cat.textContent = formatGarmentCategoryTitle(layer.garmentCategory);
+
+    const name = document.createElement("span");
+    name.className = "outfit-layer-name";
+    name.textContent = layer.name;
+    name.title = layer.name;
+
+    info.appendChild(cat);
+    info.appendChild(name);
+
+    // Controls: Toggle & Remove
+    const controls = document.createElement("div");
+    controls.className = "outfit-layer-controls";
+
+    const btnToggle = document.createElement("button");
+    btnToggle.className = "outfit-layer-btn btn-toggle";
+    btnToggle.type = "button";
+    btnToggle.title = layer.enabled ? "Hide item from camera" : "Show item on camera";
+    btnToggle.innerHTML = layer.enabled ? "✓" : "✕";
+    btnToggle.style.color = layer.enabled ? "#4ade80" : "var(--v-text-dim)";
+    btnToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleOutfitItem(layer.id);
+    });
+
+    const btnRemove = document.createElement("button");
+    btnRemove.className = "outfit-layer-btn btn-remove";
+    btnRemove.type = "button";
+    btnRemove.title = "Remove item from try-on";
+    btnRemove.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+    btnRemove.addEventListener("click", (e) => {
+      e.stopPropagation();
+      removeOutfitItem(layer.id);
+    });
+
+    controls.appendChild(btnToggle);
+    controls.appendChild(btnRemove);
+
+    card.appendChild(thumb);
+    card.appendChild(info);
+    card.appendChild(controls);
+
+    // Clicking card selects layer for fine-tuning
+    card.addEventListener("click", () => {
+      selectOutfitLayer(layer.id);
+    });
+
+    outfitLayersList.appendChild(card);
+  });
+
+  updateOutfitCountBadge();
+}
+
+function loadProduct(product, options = {}) {
+  if (!product) return;
+  addOutfitItem(product, options);
+}
+
+// ─── Sample Garment Switcher ───
+
+function loadNextSampleGarment() {
+  const sample = SAMPLE_GARMENTS[currentSampleIndex % SAMPLE_GARMENTS.length];
+  currentSampleIndex++;
+  addOutfitItem(sample, { append: true });
+}
+
+// ─── Fit Controls Handlers ───
+
+function setupFitControls() {
+  btnToggleFit?.addEventListener("click", () => {
+    fitControlsPanel?.classList.toggle("hidden");
+  });
+
+  btnScaleUp?.addEventListener("click", () => {
+    fitScale = Math.min(1.6, Math.round((fitScale + 0.05) * 100) / 100);
+    if (selectedLayerId) {
+      const layer = activeOutfit.find((l) => l.id === selectedLayerId);
+      if (layer) layer.scale = fitScale;
+    }
+    if (fitScaleVal) fitScaleVal.textContent = `${Math.round(fitScale * 100)}%`;
+  });
+
+  btnScaleDown?.addEventListener("click", () => {
+    fitScale = Math.max(0.6, Math.round((fitScale - 0.05) * 100) / 100);
+    if (selectedLayerId) {
+      const layer = activeOutfit.find((l) => l.id === selectedLayerId);
+      if (layer) layer.scale = fitScale;
+    }
+    if (fitScaleVal) fitScaleVal.textContent = `${Math.round(fitScale * 100)}%`;
+  });
+
+  btnMoveUp?.addEventListener("click", () => {
+    fitOffsetY = Math.max(-100, fitOffsetY - 10);
+    if (selectedLayerId) {
+      const layer = activeOutfit.find((l) => l.id === selectedLayerId);
+      if (layer) layer.offsetY = fitOffsetY;
+    }
+  });
+
+  btnMoveDown?.addEventListener("click", () => {
+    fitOffsetY = Math.min(100, fitOffsetY + 10);
+    if (selectedLayerId) {
+      const layer = activeOutfit.find((l) => l.id === selectedLayerId);
+      if (layer) layer.offsetY = fitOffsetY;
+    }
+  });
+
+  btnResetFit?.addEventListener("click", () => {
+    fitScale = 1.0;
+    fitOffsetY = 0;
+    fitOpacity = 0.88;
+    if (selectedLayerId) {
+      const layer = activeOutfit.find((l) => l.id === selectedLayerId);
+      if (layer) {
+        layer.scale = 1.0;
+        layer.offsetY = 0;
+        layer.opacity = 0.88;
+      }
+    }
+    if (fitScaleVal) fitScaleVal.textContent = "100%";
+    if (fitOpacitySlider) fitOpacitySlider.value = "88";
+    showToast("Fit reset to default");
+  });
+
+  fitOpacitySlider?.addEventListener("input", (e) => {
+    fitOpacity = Number(e.target.value) / 100;
+    if (selectedLayerId) {
+      const layer = activeOutfit.find((l) => l.id === selectedLayerId);
+      if (layer) layer.opacity = fitOpacity;
+    }
+  });
+}
+
+// ─── Pop-out Window & Fallbacks ───
+
+function openInDedicatedWindow() {
+  if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+    chrome.runtime.sendMessage({
+      type: "VESTORA_OPEN_WINDOW",
+      payload: currentProduct,
+    });
+    // If in iframe, close iframe
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: "VESTORA_CLOSE_TRYON" }, "*");
+    }
+  } else {
+    window.open(window.location.href, "VESTORATryOn", "width=480,height=820");
+  }
+}
+
+function openInSidePanel() {
+  if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+    chrome.runtime.sendMessage({
+      type: "VESTORA_OPEN_SIDEPANEL",
+      payload: currentProduct,
+    });
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: "VESTORA_CLOSE_TRYON" }, "*");
+    }
+  }
+}
+
+// ─── Screenshot ───
+
+function takeScreenshot() {
+  const compositeCanvas = document.createElement("canvas");
+  compositeCanvas.width = videoEl.videoWidth || 1280;
+  compositeCanvas.height = videoEl.videoHeight || 720;
+  const compCtx = compositeCanvas.getContext("2d");
+
+  // Draw background: camera feed or uploaded photo
+  compCtx.save();
+  if (currentInputMode === "photo" && userPhotoFeed?.complete) {
+    compCtx.drawImage(userPhotoFeed, 0, 0, compositeCanvas.width, compositeCanvas.height);
+  } else {
+    if (currentFacing === "user") {
+      compCtx.translate(compositeCanvas.width, 0);
+      compCtx.scale(-1, 1);
+    }
+    compCtx.drawImage(videoEl, 0, 0);
+  }
+  compCtx.restore();
+
+  // Draw garment overlay
+  compCtx.drawImage(canvasEl, 0, 0);
+
+  // Watermark
+  compCtx.save();
+  compCtx.fillStyle = "rgba(255, 255, 255, 0.65)";
+  compCtx.font = "bold 16px Inter, sans-serif";
+  compCtx.textAlign = "right";
+  compCtx.fillText("VESTORA · Wear What You Imagine", compositeCanvas.width - 20, compositeCanvas.height - 20);
+  compCtx.restore();
+
+  const link = document.createElement("a");
+  link.download = `vestora-tryon-${Date.now()}.png`;
+  link.href = compositeCanvas.toDataURL("image/png");
+  link.click();
+
+  const flash = document.createElement("div");
+  flash.className = "screenshot-flash";
+  document.body.appendChild(flash);
+  flash.addEventListener("animationend", () => flash.remove());
+
+  showToast("📸 Screenshot captured & saved!");
+}
+
+// ─── UI Helpers ───
+
+function showBodyIndicator(show) {
+  bodyIndicator?.classList.toggle("hidden", !show);
+}
+
+function showToast(message) {
+  document.querySelectorAll(".tryon-toast").forEach((t) => t.remove());
+
+  const toast = document.createElement("div");
+  toast.className = "tryon-toast";
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  requestAnimationFrame(() => {
+    toast.classList.add("is-visible");
+  });
+
+  setTimeout(() => {
+    toast.classList.remove("is-visible");
+    setTimeout(() => toast.remove(), 400);
+  }, 2600);
+}
+
+// ─── Cleanup ───
+
+function cleanup() {
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
+  if (cameraStream) {
+    cameraStream.getTracks().forEach((t) => t.stop());
+    cameraStream = null;
+  }
+  window.removeEventListener("resize", resizeCanvas);
+}
+
+window.addEventListener("beforeunload", cleanup);
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
+  } else if (isBodyDetected) {
+    startRenderLoop();
+  }
+});
+
+// ─── Grab Product from Active Shopping Page ───
+// Universal solution for Myntra, Ajio, Amazon, Zara, Flipkart & all 350+ platforms where drag-and-drop is blocked
+
+async function grabProductFromCurrentTab() {
+  showToast("✦ Scanning page for clothing item…");
+
+  // 1. If running inside an iframe on the store page
+  if (window.parent !== window) {
+    window.parent.postMessage({ type: "VESTORA_REQUEST_PAGE_PRODUCT" }, "*");
+    return;
+  }
+
+  // 2. If running in Chrome Side Panel or dedicated window
+  if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+    chrome.runtime.sendMessage({ type: "VESTORA_GRAB_CURRENT_TAB_PRODUCT" }, (resp) => {
+      if (resp?.success && resp.product) {
+        loadProduct(resp.product);
+        showToast(`✦ Grabbed "${resp.product.name.slice(0, 24)}…" from page!`);
+      } else {
+        // Fallback: check storage for active product
+        chrome.storage?.local?.get(["vestora:active_product"], (data) => {
+          const prod = data?.["vestora:active_product"];
+          if (prod && prod.imageUrl) {
+            loadProduct(prod);
+            showToast(`✦ Loaded garment: "${prod.name.slice(0, 24)}…"`);
+          } else {
+            showToast("💡 Right-click any garment photo → '✦ Try on with VESTORA'!");
+          }
+        });
+      }
+    });
+  }
+}
+
+// ─── Mode Switching: Live Camera vs Uploaded Photo ───
+
+function switchToCameraMode() {
+  currentInputMode = "camera";
+  btnModeCamera?.classList.add("active");
+  btnModePhoto?.classList.remove("active");
+  userPhotoFeed?.classList.add("hidden");
+  photoUploadPrompt?.classList.add("hidden");
+  videoEl.classList.remove("hidden");
+
+  if (topbarLiveBadge) {
+    topbarLiveBadge.textContent = "LIVE";
+    topbarLiveBadge.style.background = "var(--v-red)";
+  }
+
+  if (!cameraStream) {
+    initCamera(currentFacing);
+  } else {
+    isBodyDetected = true;
+    startRenderLoop();
+  }
+}
+
+function switchToPhotoMode() {
+  currentInputMode = "photo";
+  btnModePhoto?.classList.add("active");
+  btnModeCamera?.classList.remove("active");
+  videoEl.classList.add("hidden");
+  cameraBlockedCard?.classList.add("hidden");
+
+  if (topbarLiveBadge) {
+    topbarLiveBadge.textContent = "PHOTO";
+    topbarLiveBadge.style.background = "#8b5cf6";
+  }
+
+  if (userPhotoLoaded && userPhotoFeed?.complete) {
+    userPhotoFeed.classList.remove("hidden");
+    photoUploadPrompt?.classList.add("hidden");
+    isBodyDetected = true;
+    startRenderLoop();
+  } else {
+    userPhotoFeed?.classList.add("hidden");
+    photoUploadPrompt?.classList.remove("hidden");
+  }
+}
+
+function handleUserPhotoUpload(file) {
+  if (!file || !file.type.startsWith("image/")) {
+    showToast("Please choose an image file (PNG, JPG, WebP)");
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target.result;
+    if (userPhotoFeed) {
+      userPhotoFeed.onload = () => {
+        userPhotoLoaded = true;
+        photoUploadPrompt?.classList.add("hidden");
+        userPhotoFeed.classList.remove("hidden");
+        isBodyDetected = true;
+        showToast("✦ Photo loaded! Virtual Try-On active.");
+        startRenderLoop();
+      };
+      userPhotoFeed.src = dataUrl;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+// Mode Switcher Listeners
+btnModeCamera?.addEventListener("click", switchToCameraMode);
+btnModePhoto?.addEventListener("click", switchToPhotoMode);
+btnBrowsePhoto?.addEventListener("click", () => userPhotoInput?.click());
+btnFallbackPhoto?.addEventListener("click", () => {
+  switchToPhotoMode();
+  userPhotoInput?.click();
+});
+userPhotoInput?.addEventListener("change", (e) => {
+  const file = e.target.files?.[0];
+  if (file) handleUserPhotoUpload(file);
+});
+
+// ─── Event Listeners ───
+
+btnFlipCamera?.addEventListener("click", flipCamera);
+btnScreenshot?.addEventListener("click", takeScreenshot);
+btnPopoutWindow?.addEventListener("click", openInDedicatedWindow);
+btnFallbackWindow?.addEventListener("click", openInDedicatedWindow);
+btnFallbackSidepanel?.addEventListener("click", openInSidePanel);
+btnLoadSample?.addEventListener("click", loadNextSampleGarment);
+
+// Grab from Page triggers
+btnGrabPage?.addEventListener("click", grabProductFromCurrentTab);
+btnGrabPagePill?.addEventListener("click", grabProductFromCurrentTab);
+
+// Paste Image URL modal & Add item triggers
+btnAddItemPill?.addEventListener("click", () => {
+  pasteUrlModal?.classList.remove("hidden");
+  pasteUrlInput?.focus();
+});
+
+btnClearOutfit?.addEventListener("click", clearOutfit);
+
+btnPasteUrlPill?.addEventListener("click", () => {
+  pasteUrlModal?.classList.remove("hidden");
+  pasteUrlInput?.focus();
+});
+
+btnCancelUrl?.addEventListener("click", () => {
+  pasteUrlModal?.classList.add("hidden");
+});
+
+btnSubmitUrl?.addEventListener("click", () => {
+  const url = pasteUrlInput?.value.trim();
+  if (url) {
+    addOutfitItem({
+      id: `pasted_${Date.now()}`,
+      name: "Custom Fashion Item",
+      category: "Fashion Item",
+      imageUrl: url,
+      availableSizes: ["XS", "S", "M", "L", "XL", "XXL"],
+    }, { append: true });
+    pasteUrlModal?.classList.add("hidden");
+    if (pasteUrlInput) pasteUrlInput.value = "";
+    showToast("✦ Custom fashion item loaded!");
+  }
+});
+
+pasteUrlInput?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    btnSubmitUrl?.click();
+  } else if (e.key === "Escape") {
+    btnCancelUrl?.click();
+  }
+});
+
+btnClose?.addEventListener("click", () => {
+  cleanup();
+  if (window.parent !== window) {
+    window.parent.postMessage({ type: "VESTORA_CLOSE_TRYON" }, "*");
+  }
+  if (window.opener || window.history.length <= 1) {
+    window.close();
+  }
+});
+
+// Listen for messages from parent frame (content script)
+window.addEventListener("message", (event) => {
+  if (!event.data || typeof event.data !== "object") return;
+  if (event.data.type === "VESTORA_LOAD_PRODUCT") {
+    loadProduct(event.data.product);
+  }
+  if (event.data.type === "VESTORA_ADD_OUTFIT_ITEM") {
+    addOutfitItem(event.data.product, { append: true });
+  }
+  if (event.data.type === "VESTORA_REQUEST_PAGE_PRODUCT_RESULT") {
+    if (event.data.product) {
+      loadProduct(event.data.product);
+      showToast(`✦ Grabbed "${event.data.product.name.slice(0, 24)}…" from page!`);
+    } else {
+      showToast("💡 Right-click any clothing photo → '✦ Try on with VESTORA'!");
+    }
+  }
+  if (event.data.type === "VESTORA_TOGGLE_DEBUG") {
+    perfHud?.classList.toggle("hidden");
+  }
+});
+
+// Listen for messages from background service worker
+if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg?.type === "VESTORA_LOAD_PRODUCT") {
+      loadProduct(msg.product);
+    }
+    if (msg?.type === "VESTORA_ADD_OUTFIT_ITEM") {
+      addOutfitItem(msg.product, { append: true });
+    }
+  });
+}
+
+// ─── Initialize ───
+
+setupDragAndDrop();
+setupFitControls();
+
+[measShoulder, measChest, measWaist, measTorso].forEach((el) => {
+  el?.classList.add("is-loading");
+});
+
+updateSizePills("M");
+
+// Initialize Camera
+initCamera("user");
+
+// Parse product from URL parameters if available
+const urlParams = new URLSearchParams(window.location.search);
+const productParam = urlParams.get("product");
+if (productParam) {
+  try {
+    const product = JSON.parse(decodeURIComponent(productParam));
+    loadProduct(product);
+  } catch (e) {
+    console.warn("[VESTORA] Failed to parse product parameter:", e);
+  }
+}

@@ -89,8 +89,43 @@ async function build() {
 
   await Promise.all([backgroundBuild, contentBuild, popupBuild]);
 
-  console.log("✅ VESTORA Manifest V3 Extension successfully built into dist/!");
-  console.log("👉 Load unpacked in Chrome via: chrome://extensions (select 'dist' folder)");
+  // 7. Synchronize to root directory so loading the root repository in Chrome works seamlessly
+  fs.copyFileSync("dist/manifest.json", "manifest.json");
+  await copyDir("dist/background", "background");
+  await copyDir("dist/content", "content");
+  await copyDir("dist/popup", "popup");
+  await copyDir("dist/styles", "styles");
+  await copyDir("dist/tryon", "tryon");
+  await copyDir("dist/assets", "assets");
+
+  // Clean out legacy files that referenced external Decart / Anywear URLs
+  const legacyFilesToRemove = [
+    "background.js",
+    "content.js",
+    "config.js",
+    "widget.html",
+    "widget-core.js",
+    "widget-init.js",
+    "widget.bundle.js",
+    "crash_reports.js",
+    "button-detector.js",
+    "revolve.js",
+    "ugg.js",
+    "guess.js",
+    "factory54.js",
+    "uniqlo.js",
+    "per_website_garment_filter.js",
+    "popup.html",
+    "popup.js",
+  ];
+  for (const file of legacyFilesToRemove) {
+    if (fs.existsSync(file)) {
+      fs.rmSync(file, { force: true });
+    }
+  }
+
+  console.log("✅ VESTORA Manifest V3 Extension successfully built into dist/ and root!");
+  console.log("👉 Load unpacked in Chrome via: chrome://extensions (select 'dist' or root folder)");
 }
 
 build().catch((err) => {

@@ -1,1 +1,0 @@
-var DecartUniqlo=function(){"use strict";var n=/(^|\.)uniqlo\.com$/i,t=null;return{applies:function(){return null===t&&(t=n.test(location.hostname)),t},singleImageOnly:function(){return!0},buttonOnEveryGalleryView:function(){return!0}}}();

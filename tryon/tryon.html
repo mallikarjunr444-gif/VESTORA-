@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>VESTORA Live Try-On</title>
+  <link rel="stylesheet" href="tryon.css" />
+</head>
+<body>
+  <div id="vestora-tryon-root" class="tryon-root">
+
+    <!-- ── Top Bar ── -->
+    <header class="tryon-topbar">
+      <div class="topbar-brand">
+        <img src="../assets/logo/vestora-logo.png" alt="VESTORA" class="topbar-logo" />
+        <span class="topbar-badge" id="topbar-live-badge">LIVE</span>
+      </div>
+
+      <!-- Mode Switcher: Live Camera vs Uploaded Photo -->
+      <div class="mode-switcher" id="mode-switcher">
+        <button id="btn-mode-camera" class="mode-tab active" type="button" title="Live Webcam Try-On">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+          <span>Camera</span>
+        </button>
+        <button id="btn-mode-photo" class="mode-tab" type="button" title="Upload Photo Try-On">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          <span>Photo</span>
+        </button>
+      </div>
+
+      <!-- Hidden file input for uploading user's photo -->
+      <input type="file" id="user-photo-input" accept="image/*" style="display: none !important;" />
+
+      <div class="topbar-actions">
+        <!-- Grab from active store tab (Bypasses drag-and-drop restrictions on Myntra, Ajio, etc.) -->
+        <button id="btn-grab-page" class="topbar-btn topbar-btn-grab" aria-label="Grab Product from Page" title="Grab clothing from active store tab (Myntra, Ajio, Zara, etc.)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+        <!-- Fit adjustment toggle -->
+        <button id="btn-toggle-fit" class="topbar-btn" aria-label="Adjust Fit" title="Adjust Garment Fit">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg>
+        </button>
+        <!-- Pop out to dedicated window -->
+        <button id="btn-popout-window" class="topbar-btn" aria-label="Pop-out Window" title="Open in Dedicated Window">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </button>
+        <!-- Flip Camera (front / back) -->
+        <button id="btn-flip-camera" class="topbar-btn" aria-label="Flip Camera" title="Flip Camera">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"/><path d="M8 21H3v-5"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+        </button>
+        <!-- Screenshot -->
+        <button id="btn-screenshot" class="topbar-btn" aria-label="Take Screenshot" title="Capture Screenshot">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+        <!-- Close -->
+        <button id="btn-close-tryon" class="topbar-btn topbar-btn-close" aria-label="Close" title="Close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- ── Camera / Photo + Overlay Canvas Viewport ── -->
+    <main id="tryon-viewport" class="tryon-viewport">
+      <!-- Camera feed -->
+      <video id="camera-feed" class="camera-video" autoplay playsinline muted></video>
+      <!-- Uploaded user photo feed (for photo mode) -->
+      <img id="user-photo-feed" class="user-photo-image hidden" alt="Uploaded User" />
+      <!-- Garment overlay canvas (layered on top) -->
+      <canvas id="garment-canvas" class="garment-canvas"></canvas>
+
+      <!-- Photo Upload Prompt (shown when in photo mode with no photo loaded yet) -->
+      <div id="photo-upload-prompt" class="photo-upload-prompt hidden">
+        <div class="photo-prompt-card">
+          <div class="photo-prompt-icon">📸</div>
+          <h3>Try On with Your Photo</h3>
+          <p>Upload a full-body or portrait photo to see this garment rendered on you 100% on-device.</p>
+          <button id="btn-browse-photo" class="btn-browse-photo" type="button">Select Photo</button>
+        </div>
+      </div>
+
+      <!-- Drag & Drop Overlay Target (Anywear Signature Feature) -->
+      <div id="drop-zone-overlay" class="drop-zone-overlay hidden">
+        <div class="drop-zone-card">
+          <div class="drop-zone-icon-glow">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.38 3.46L16 2a4 4 0 01-8 0L3.62 3.46a2 2 0 00-1.34 2.23l.58 3.47a1 1 0 00.99.84H6v10a2 2 0 002 2h8a2 2 0 002-2V10h2.15a1 1 0 00.99-.84l.58-3.47a2 2 0 00-1.34-2.23z"/></svg>
+          </div>
+          <h3 class="drop-zone-title">Drop Garment to Try On</h3>
+          <p class="drop-zone-subtitle">Release any clothing photo from the store page here</p>
+        </div>
+      </div>
+
+      <!-- Camera Restricted / Blocked Fallback Card -->
+      <div id="camera-blocked-card" class="camera-blocked-card hidden">
+        <div class="blocked-card-inner">
+          <div class="blocked-icon">📹</div>
+          <h3>Camera Permission Needed</h3>
+          <p id="camera-error-message">This website's security policy restricts camera access inside embedded views.</p>
+          <div class="blocked-btn-group">
+            <button id="btn-fallback-sidepanel" class="btn-fallback primary">Open in Side Panel</button>
+            <button id="btn-fallback-window" class="btn-fallback secondary">Open Pop-out Window</button>
+            <button id="btn-fallback-photo" class="btn-fallback accent">Try with Uploaded Photo</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fit Fine-Tuning Floating Controls (Expandable) -->
+      <div id="fit-controls-panel" class="fit-controls-panel hidden">
+        <div class="fit-control-row">
+          <span class="fit-label">Scale:</span>
+          <button id="btn-scale-down" class="fit-btn" title="Shrink Garment">−</button>
+          <span id="fit-scale-val" class="fit-val">100%</span>
+          <button id="btn-scale-up" class="fit-btn" title="Enlarge Garment">+</button>
+        </div>
+        <div class="fit-control-row">
+          <span class="fit-label">Height:</span>
+          <button id="btn-move-up" class="fit-btn" title="Raise Garment">▲</button>
+          <button id="btn-move-down" class="fit-btn" title="Lower Garment">▼</button>
+          <button id="btn-reset-fit" class="fit-btn-reset" title="Reset Fit">Reset</button>
+        </div>
+        <div class="fit-control-row">
+          <span class="fit-label">Opacity:</span>
+          <input type="range" id="fit-opacity-slider" min="50" max="100" value="88" class="fit-slider" />
+        </div>
+      </div>
+
+      <!-- Paste Image URL Modal -->
+      <div id="paste-url-modal" class="paste-url-modal hidden">
+        <div class="paste-modal-card">
+          <h4>Paste Garment Image URL</h4>
+          <input type="url" id="paste-url-input" placeholder="https://...jpg or png from any store" class="paste-input" />
+          <div class="paste-modal-actions">
+            <button id="btn-submit-url" class="btn-modal-action primary">Load</button>
+            <button id="btn-cancel-url" class="btn-modal-action secondary">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Body detection indicator -->
+      <div id="body-detection-indicator" class="body-detect-indicator hidden">
+        <div class="body-detect-ring"></div>
+        <span class="body-detect-label">Detecting body…</span>
+      </div>
+
+      <!-- Garment loading spinner -->
+      <div id="garment-loader" class="garment-loader hidden">
+        <div class="loader-spinner"></div>
+        <span class="loader-label">Processing garment cutout…</span>
+      </div>
+
+      <!-- FPS / Performance HUD (debug) -->
+      <div id="perf-hud" class="perf-hud hidden">
+        <span id="perf-fps">-- FPS</span>
+        <span id="perf-latency">-- ms</span>
+      </div>
+    </main>
+
+    <!-- ── Bottom Panel: Size Engine + Product Info ── -->
+    <footer class="tryon-bottom-panel">
+      <!-- Product info strip -->
+      <div class="product-info-strip">
+        <img id="product-thumb" class="product-thumb" src="" alt="Product" />
+        <div class="product-details">
+          <p id="product-name" class="product-name">Ready for Try-On</p>
+          <p id="product-category" class="product-category">Select an item from any fashion store</p>
+        </div>
+        <div class="info-strip-actions">
+          <button id="btn-grab-page-pill" class="action-pill-btn grab-pill" title="Grab product from active store tab">✦ Grab Item</button>
+          <button id="btn-paste-url-pill" class="action-pill-btn" title="Paste Image Link">🔗 URL</button>
+          <button id="btn-load-sample" class="action-pill-btn sample-pill" title="Try demo apparel">Sample</button>
+        </div>
+      </div>
+
+      <!-- ── Multi-Item Active Outfit Panel (Mixed Garments & Accessories) ── -->
+      <div id="active-outfit-panel" class="active-outfit-panel">
+        <div class="outfit-panel-header">
+          <div class="outfit-header-left">
+            <span class="outfit-sparkle">✦</span>
+            <span class="outfit-title">Active Try-On Outfit</span>
+            <span id="outfit-count-badge" class="outfit-count-badge">1 Item</span>
+          </div>
+          <div class="outfit-header-actions">
+            <button id="btn-add-item-pill" class="outfit-action-btn" type="button" title="Add clothing or accessory from page or link">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <span>Add Item</span>
+            </button>
+            <button id="btn-clear-outfit" class="outfit-action-btn text-muted" type="button" title="Clear all items">Clear All</button>
+          </div>
+        </div>
+        <!-- Active Outfit Layers -->
+        <div id="outfit-layers-list" class="outfit-layers-list">
+          <!-- Dynamically populated with layer chips: Jacket, Sunglasses, Watch, etc. -->
+        </div>
+      </div>
+
+      <!-- Helpful Platform Guidance (for Google Images, Myntra, Ajio, Amazon, etc.) -->
+      <div class="platform-hint-strip">
+        <span class="hint-sparkle">💡</span>
+        <span class="hint-text">Google Images & Stores: Hover/Click <strong>✦ Try with VESTORA</strong> on any item to add it to this live camera!</span>
+      </div>
+
+      <!-- Integrated Size Engine -->
+      <div class="size-engine-panel">
+        <div class="size-engine-header">
+          <span class="size-engine-icon">📐</span>
+          <span class="size-engine-title">AI Size Recommendation</span>
+        </div>
+        <div class="size-engine-body">
+          <!-- Body measurements (auto-detected) -->
+          <div class="measurement-grid">
+            <div class="measurement-item">
+              <span class="measurement-label">Shoulder</span>
+              <span id="meas-shoulder" class="measurement-value">--</span>
+            </div>
+            <div class="measurement-item">
+              <span class="measurement-label">Chest</span>
+              <span id="meas-chest" class="measurement-value">--</span>
+            </div>
+            <div class="measurement-item">
+              <span class="measurement-label">Waist</span>
+              <span id="meas-waist" class="measurement-value">--</span>
+            </div>
+            <div class="measurement-item">
+              <span class="measurement-label">Torso</span>
+              <span id="meas-torso" class="measurement-value">--</span>
+            </div>
+          </div>
+          <!-- Recommended size -->
+          <div class="recommended-size">
+            <span class="rec-label">Recommended Size</span>
+            <div id="recommended-size-value" class="rec-value">--</div>
+          </div>
+          <!-- Available sizes -->
+          <div class="available-sizes">
+            <span class="sizes-label">Available Sizes</span>
+            <div id="size-options" class="sizes-row">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Privacy + branding footer -->
+      <div class="tryon-footer">
+        <span class="footer-privacy">🔒 100% On-Device Processing · Video Never Uploaded</span>
+        <span class="footer-brand">VESTORA v1.0</span>
+      </div>
+    </footer>
+  </div>
+
+  <script type="module" src="tryon.js"></script>
+</body>
+</html>
