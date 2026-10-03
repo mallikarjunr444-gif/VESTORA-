@@ -7,7 +7,8 @@
     "build": "node build.mjs",
     "dev": "node build.mjs --watch",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/foundation.test.js && node test/test-dom-scanners.js && node test/test-generic-detector.js && node test/test-google-images-and-outfit.js && node tests/in-house-vton.test.js"
+    "test": "node tests/foundation.test.js && node test/test-dom-scanners.js && node test/test-generic-detector.js && node test/test-google-images-and-outfit.js && node tests/in-house-vton.test.js",
+    "models": "node scripts/fetch-models.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.312",
