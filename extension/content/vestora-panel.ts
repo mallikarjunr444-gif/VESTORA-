@@ -949,22 +949,36 @@ async function initCamera(facingMode: "user" | "environment") {
   cameraBlockedEl?.classList.add("hidden");
   setDetectRing(true, "Starting camera…");
 
+  // Use window.navigator explicitly (content script context, not page context)
+  const mediaDevices = window.navigator.mediaDevices;
+  if (!mediaDevices || !mediaDevices.getUserMedia) {
+    console.error("[VESTORA] navigator.mediaDevices not available");
+    handleCameraFail("Camera API not available in this browser.");
+    return;
+  }
+
   const variants: MediaStreamConstraints[] = [
     { video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
     { video: { facingMode: { ideal: facingMode } }, audio: false },
     { video: true, audio: false },
   ];
 
+  let lastErr: unknown;
   for (const c of variants) {
     try {
-      cameraStream = await navigator.mediaDevices.getUserMedia(c);
+      cameraStream = await mediaDevices.getUserMedia(c);
       await setupStream(cameraStream, facingMode);
       return;
-    } catch (_) { /* try next */ }
+    } catch (err) {
+      lastErr = err;
+      console.warn("[VESTORA] getUserMedia variant failed:", err);
+    }
   }
 
+  console.error("[VESTORA] All camera variants failed:", lastErr);
   handleCameraFail();
 }
+
 
 async function setupStream(stream: MediaStream, facingMode: "user" | "environment") {
   if (!videoEl) return;
@@ -992,10 +1006,10 @@ function stopCamera() {
   isBodyDetected = false;
 }
 
-function handleCameraFail() {
+function handleCameraFail(customMsg?: string) {
   setDetectRing(true, "No Camera");
   const errEl = shadowRoot?.getElementById("v-camera-error-msg");
-  if (errEl) errEl.textContent = "Camera permission was denied or no camera found. Click ↺ Retry after allowing camera in browser settings, or use Photo mode.";
+  if (errEl) errEl.textContent = customMsg || "Camera permission was denied or no camera found. Click ↺ Retry after allowing camera in browser settings, or use Photo mode.";
   cameraBlockedEl?.classList.remove("hidden");
 }
 

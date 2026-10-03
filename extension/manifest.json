@@ -56,6 +56,9 @@
     "sidePanel",
     "contextMenus"
   ],
+  "optional_permissions": [
+    "camera"
+  ],
   "host_permissions": [
     "<all_urls>"
   ]
