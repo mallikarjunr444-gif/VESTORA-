@@ -251,43 +251,41 @@ const logger = new Logger("ProductDetector");
 
   function openTryOnWidget(product: Product) {
     // Remove existing widget if open
-    const existing = document.getElementById("vestora-tryon-overlay");
-    if (existing) existing.remove();
+    const existing = document.getElementById("vestora-tryon-container");
+    if (existing) {
+      existing.remove();
+      document.body.style.overflow = "";
+    }
 
-    // Create fullscreen overlay container
-    const overlay = document.createElement("div");
-    overlay.id = "vestora-tryon-overlay";
-    overlay.style.cssText = `
-      position: fixed !important;
-      top: 0 !important;
-      left: 0 !important;
-      width: 100vw !important;
-      height: 100vh !important;
-      z-index: 2147483646 !important;
-      background: rgba(0, 0, 0, 0.85) !important;
-      backdrop-filter: blur(8px) !important;
-      -webkit-backdrop-filter: blur(8px) !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      opacity: 0 !important;
-      transition: opacity 0.3s ease !important;
+    // Floating window container (draggable, non-blocking pane)
+    const container = document.createElement("div");
+    container.id = "vestora-tryon-container";
+    container.className = "vestora-pane-mode";
+
+    // Header bar: "Try-On ✦ VESTORA"
+    const header = document.createElement("div");
+    header.className = "vestora-pane-header";
+    header.innerHTML = `
+      <div class="vestora-pane-title">
+        <span>Try-On</span>
+        <span class="vestora-pane-sparkle">✦</span>
+        <span class="vestora-pane-brand">VESTORA</span>
+        <span class="vestora-pane-free-badge">FREE · NO QUEUE</span>
+      </div>
+      <div class="vestora-pane-actions">
+        <button type="button" class="vestora-pane-btn" id="vestora-pane-expand" title="Toggle Fullscreen" aria-label="Toggle Fullscreen">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+        </button>
+        <button type="button" class="vestora-pane-btn" id="vestora-pane-close" title="Close" aria-label="Close">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
     `;
 
-    // Create try-on iframe
+    // Try-on iframe
     const iframe = document.createElement("iframe");
     iframe.id = "vestora-tryon-frame";
     iframe.allow = "camera; microphone; autoplay; fullscreen";
-    iframe.style.cssText = `
-      width: 100% !important;
-      height: 100% !important;
-      max-width: 100vw !important;
-      max-height: 100vh !important;
-      border: none !important;
-      border-radius: 0 !important;
-      background: #0a0c12 !important;
-    `;
-
     iframe.src = chrome.runtime.getURL("tryon/tryon.html");
 
     iframe.addEventListener("load", () => {
@@ -299,24 +297,86 @@ const logger = new Logger("ProductDetector");
       }
     });
 
-    overlay.appendChild(iframe);
-    document.body.appendChild(overlay);
+    container.appendChild(header);
+    container.appendChild(iframe);
+    document.body.appendChild(container);
 
-    requestAnimationFrame(() => {
-      overlay.style.opacity = "1";
+    // Draggable header logic
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+
+    header.addEventListener("mousedown", (e) => {
+      const target = e.target as HTMLElement;
+      if (target.closest(".vestora-pane-btn")) return;
+      if (container.classList.contains("vestora-fullscreen-mode")) return;
+
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = container.getBoundingClientRect();
+      startLeft = rect.left;
+      startTop = rect.top;
+
+      container.style.bottom = "auto";
+      container.style.right = "auto";
+      container.style.left = `${startLeft}px`;
+      container.style.top = `${startTop}px`;
+      e.preventDefault();
     });
 
-    document.body.style.overflow = "hidden";
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const newLeft = Math.max(8, Math.min(window.innerWidth - container.offsetWidth - 8, startLeft + dx));
+      const newTop = Math.max(8, Math.min(window.innerHeight - container.offsetHeight - 8, startTop + dy));
+      container.style.left = `${newLeft}px`;
+      container.style.top = `${newTop}px`;
+    };
 
-    // Listen for messages from widget
+    const onMouseUp = () => {
+      isDragging = false;
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+
+    // Fullscreen toggle
+    const expandBtn = header.querySelector("#vestora-pane-expand") as HTMLButtonElement | null;
+    expandBtn?.addEventListener("click", () => {
+      const isFull = container.classList.toggle("vestora-fullscreen-mode");
+      container.classList.toggle("vestora-pane-mode", !isFull);
+      if (isFull) {
+        document.body.style.overflow = "hidden";
+      } else {
+        document.body.style.overflow = "";
+      }
+    });
+
+    // Close button
+    const closeWidget = () => {
+      container.style.opacity = "0";
+      container.style.transform = "scale(0.96)";
+      setTimeout(() => {
+        container.remove();
+        document.body.style.overflow = "";
+      }, 200);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("message", widgetMessageHandler);
+      document.removeEventListener("keydown", escHandler);
+    };
+
+    const closeBtn = header.querySelector("#vestora-pane-close") as HTMLButtonElement | null;
+    closeBtn?.addEventListener("click", closeWidget);
+
+    // Listen for messages from inside iframe
     const widgetMessageHandler = (event: MessageEvent) => {
       if (event.data?.type === "VESTORA_CLOSE_TRYON") {
-        overlay.style.opacity = "0";
-        setTimeout(() => {
-          overlay.remove();
-          document.body.style.overflow = "";
-        }, 300);
-        window.removeEventListener("message", widgetMessageHandler);
+        closeWidget();
       } else if (event.data?.type === "VESTORA_REQUEST_PAGE_PRODUCT") {
         const prod = activeProduct || getHeroProduct();
         if (iframe.contentWindow) {
@@ -332,13 +392,7 @@ const logger = new Logger("ProductDetector");
     // Close on Escape key
     const escHandler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        overlay.style.opacity = "0";
-        setTimeout(() => {
-          overlay.remove();
-          document.body.style.overflow = "";
-        }, 300);
-        window.removeEventListener("message", widgetMessageHandler);
-        document.removeEventListener("keydown", escHandler);
+        closeWidget();
       }
     };
     document.addEventListener("keydown", escHandler);
