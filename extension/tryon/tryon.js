@@ -655,16 +655,12 @@ if (RT_VTON_SUPPORTED.includes(garmentItem.garmentCategory)) {
                 console.warn("[VESTORA] RT‑VTON frame render error:", e);
                 // Fallback to in‑house rendering on error or unsupported category.
                 renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
-            });
-   
+            })
+        // Early return – RT‑VTON handled this frame.
         return;
-  return;
-    // Early return – RT‑VTON handled this frame.
-    return;
-  }
+    }
   // If category unsupported, fall back to in‑house rendering.
-          renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
-        return;
+  renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
 } else {
   // No RT‑VTON backend – use the existing in‑house pipeline.
   renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
