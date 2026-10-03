@@ -196,6 +196,9 @@ const serverStatusPill = document.getElementById("server-status-pill");
 const btnSaveEngineSettings = document.getElementById("btn-save-engine-settings");
 const btnDisconnectVton = document.getElementById("btn-disconnect-vton");
 
+const vtonSetupCard = document.getElementById("vton-setup-card");
+const btnQuickConnectVton = document.getElementById("btn-quick-connect-vton");
+
 // ─── VESTORA Real-Time AI VTON Engine (Decart Lucy-VTON over WebRTC) ───
 class VestoraVTONManager {
   constructor() {
@@ -262,6 +265,8 @@ class VestoraVTONManager {
   }
 
   updateUI() {
+    const hasKey = Boolean(this.getEffectiveApiKey());
+
     if (this.status === "connected" && this.isVTONRendering) {
       if (topbarEngineBadge) {
         topbarEngineBadge.className = "topbar-engine-badge connected";
@@ -269,6 +274,7 @@ class VestoraVTONManager {
       if (topbarEngineText) topbarEngineText.textContent = "LUCY VTON 30FPS";
       if (engineStatusIndicator) engineStatusIndicator.className = "status-indicator-dot online";
       if (engineStatusMessage) engineStatusMessage.textContent = "Connected: Real-Time WebRTC Lucy VTON Active (1280x720 @ 30 FPS)";
+      vtonSetupCard?.classList.add("hidden");
     } else if (this.status === "connecting") {
       if (topbarEngineBadge) {
         topbarEngineBadge.className = "topbar-engine-badge connecting";
@@ -276,16 +282,22 @@ class VestoraVTONManager {
       if (topbarEngineText) topbarEngineText.textContent = "CONNECTING...";
       if (engineStatusIndicator) engineStatusIndicator.className = "status-indicator-dot connecting";
       if (engineStatusMessage) engineStatusMessage.textContent = "Negotiating WebRTC stream with Lucy-VTON...";
+      vtonSetupCard?.classList.add("hidden");
     } else {
       if (topbarEngineBadge) {
         topbarEngineBadge.className = "topbar-engine-badge";
       }
-      const hasKey = Boolean(this.getEffectiveApiKey());
       if (topbarEngineText) topbarEngineText.textContent = hasKey ? "VTON READY" : "SETUP VTON";
       if (engineStatusIndicator) engineStatusIndicator.className = "status-indicator-dot" + (this.status === "error" ? " error" : "");
       if (engineStatusMessage) engineStatusMessage.textContent = this.status === "error" 
         ? "Connection error. Check API key." 
         : (hasKey ? "Ready to stream with Lucy-VTON" : "Decart API Key required for real-time video try-on");
+
+      if (!hasKey) {
+        vtonSetupCard?.classList.remove("hidden");
+      } else {
+        vtonSetupCard?.classList.add("hidden");
+      }
     }
   }
 
@@ -691,28 +703,16 @@ function renderAllOutfitLayers(pose, canvasWidth, canvasHeight, isMirrored) {
     "headwear",
   ];
 
-  const activeLayers = activeOutfit
-    .filter((layer) => layer.enabled)
+  // Real-Time Video VTON Architecture:
+  // Upper-body and full-body clothing are NEVER rendered as 2D canvas stickers or PNG overlays.
+  // Clothing try-on is handled 100% by the live AI video model (lucy-vton-latest / lucy-vton-3.5)
+  // which replaces the user's shirt frame-by-frame, follows the body during movement, and respects arm occlusion.
+  // The 2D canvas is reserved strictly for non-clothing accessories (e.g. sunglasses, watch, hat).
+  const accessoryLayers = activeOutfit
+    .filter((layer) => layer.enabled && layer.garmentCategory !== "upper_body" && layer.garmentCategory !== "full_body")
     .sort((a, b) => layerOrder.indexOf(a.garmentCategory) - layerOrder.indexOf(b.garmentCategory));
 
-  // When Real-Time AI VTON video stream is rendering, the garment is already realistically rendered by the video model
-  // (body-locked, arm-occluded, temporally consistent at 30 FPS).
-  // So we skip drawing flat upper body PNGs onto the canvas overlay!
-  const isVTONActive = vtonManager.isVTONRendering;
-
-  if (activeLayers.length === 0 && (processedGarmentCanvas || garmentImage)) {
-    if (isVTONActive) return; // Live AI VTON stream handles clothing
-    // Fallback for single loaded item
-    renderUpperBodyGarment(pose, canvasWidth, canvasHeight, {
-      source: processedGarmentCanvas || garmentImage,
-      scale: 1.0,
-      offsetY: 0,
-      opacity: fitOpacity,
-    }, isMirrored);
-    return;
-  }
-
-  for (const layer of activeLayers) {
+  for (const layer of accessoryLayers) {
     const src = layer.processedCanvas || layer.imageElement;
     if (!src) continue;
 
@@ -740,17 +740,6 @@ function renderAllOutfitLayers(pose, canvasWidth, canvasHeight, isMirrored) {
         break;
       case "lower_body":
         renderLowerBodyGarment(pose, canvasWidth, canvasHeight, layer, isMirrored);
-        break;
-      case "full_body":
-        if (!isVTONActive) {
-          renderFullBodyGarment(pose, canvasWidth, canvasHeight, layer, isMirrored);
-        }
-        break;
-      case "upper_body":
-      default:
-        if (!isVTONActive) {
-          renderUpperBodyGarment(pose, canvasWidth, canvasHeight, layer, isMirrored);
-        }
         break;
     }
   }
@@ -2194,6 +2183,7 @@ function setupEngineModal() {
   topbarEngineBadge?.addEventListener("click", openModal);
   btnEngineSettings?.addEventListener("click", openModal);
   btnCloseEngineModal?.addEventListener("click", closeModal);
+  btnQuickConnectVton?.addEventListener("click", openModal);
 
   btnToggleKeyVisibility?.addEventListener("click", () => {
     if (!inputDecartApiKey) return;

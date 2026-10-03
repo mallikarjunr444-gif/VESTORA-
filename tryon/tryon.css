@@ -1511,6 +1511,107 @@ html, body {
   pointer-events: auto;
 }
 
+/* VTON Setup Overlay Card */
+.vton-setup-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90%;
+  max-width: 380px;
+  background: rgba(14, 17, 27, 0.94);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  border-radius: 18px;
+  padding: 24px 20px;
+  text-align: center;
+  z-index: 25;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 30px rgba(139, 92, 246, 0.25);
+  transition: opacity 0.3s ease;
+}
+
+.vton-setup-card.hidden {
+  opacity: 0;
+  pointer-events: none;
+  display: none;
+}
+
+.vton-setup-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.vton-setup-sparkle {
+  font-size: 28px;
+  color: #a855f7;
+  animation: pulse-live 2s infinite ease-in-out;
+}
+
+.vton-setup-card h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.vton-setup-card p {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.btn-setup-vton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.45);
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.btn-setup-vton:hover {
+  transform: scale(1.03);
+  filter: brightness(1.15);
+}
+
+.vton-setup-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.vton-setup-links a {
+  color: #a855f7;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.vton-setup-links a:hover {
+  text-decoration: underline;
+}
+
+.vton-setup-server-hint code {
+  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
 /* Topbar Engine Badge */
 .topbar-engine-badge {
   display: inline-flex;

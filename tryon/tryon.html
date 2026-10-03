@@ -61,6 +61,21 @@
       <!-- Garment overlay canvas (layered on top) -->
       <canvas id="garment-canvas" class="garment-canvas"></canvas>
 
+      <!-- Real-Time AI VTON Setup Overlay Card -->
+      <div id="vton-setup-card" class="vton-setup-card hidden">
+        <div class="vton-setup-inner">
+          <div class="vton-setup-sparkle">✦</div>
+          <h3>Real-Time Live Try-On</h3>
+          <p>Anywear-grade live video virtual try-on. The clothing replaces your shirt completely, locks to your shoulders, and moves with your body.</p>
+          <button id="btn-quick-connect-vton" class="btn-setup-vton" type="button">✦ Connect Lucy-VTON Engine</button>
+          <div class="vton-setup-links">
+            <a href="https://platform.decart.ai" target="_blank" rel="noopener noreferrer">Get Free Decart Key ↗</a>
+            <span>•</span>
+            <span class="vton-setup-server-hint">Local backend: <code>cd server && npm start</code></span>
+          </div>
+        </div>
+      </div>
+
       <!-- Drag & Drop Overlay Target -->
       <div id="drop-zone-overlay" class="drop-zone-overlay hidden">
         <div class="drop-zone-card">
