@@ -151,3 +151,63 @@ class RTVTONInferenceSession:
 
         self.cached_output = canvas.convert("RGB")
         return self.cached_output
+import base64
+import io
+from flask import Flask, request, jsonify
+
+# Initialize inference session (load model on first request)
+_inference_session = RTVTONInferenceSession(target_fps=24)
+
+def _ensure_model_loaded():
+    if not _inference_session.is_ready:
+        _inference_session.load_model()
+
+app = Flask(__name__)
+
+@app.route('/api/vton/frame', methods=['POST'])
+def process_frame():
+    """Accept a JSON payload with base64-encoded images and metadata.
+    Expected fields:
+        person_image: base64 string of the user image (RGB or RGBA)
+        garment_image: base64 string of the clothing item
+        category: string identifier (e.g., "tshirt", "dress", etc.)
+        landmarks: optional list of pose landmarks (list of dicts with x, y, visibility)
+    Returns:
+        JSON with "overlay_image" as base64 PNG of the try‑on result.
+    """
+    data = request.get_json(force=True)
+    if not data:
+        return jsonify({"error": "No JSON payload provided"}), 400
+
+    try:
+        person_b64 = data["person_image"]
+        garment_b64 = data["garment_image"]
+        category = data.get("category", "upper_body")
+        landmarks = data.get("landmarks", [])
+    except KeyError as e:
+        return jsonify({"error": f"Missing field {e}"}), 400
+
+    # Decode images
+    person_img = Image.open(io.BytesIO(base64.b64decode(person_b64))).convert("RGBA")
+    garment_img = Image.open(io.BytesIO(base64.b64decode(garment_b64))).convert("RGBA")
+
+    _ensure_model_loaded()
+    try:
+        result_img = _inference_session.run_inference(
+            person_img=person_img,
+            garment_img=garment_img,
+            category=category,
+            landmarks=landmarks,
+        )
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+    # Encode result back to base64 PNG
+    buffered = io.BytesIO()
+    result_img.save(buffered, format="PNG")
+    overlay_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+    return jsonify({"overlay_image": overlay_b64})
+
+if __name__ == '__main__':
+    # Run on all interfaces for the Express proxy to reach it
+    app.run(host='0.0.0.0', port=5000)
