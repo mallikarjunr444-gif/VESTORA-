@@ -85,8 +85,8 @@ const SAMPLE_GARMENTS = [
 let currentSampleIndex = 0;
 
 // ─── State ───
-let currentInputMode = "camera"; // "camera" | "photo"
-let userPhotoLoaded = false;
+let currentInputMode = "camera"; // always camera — photo mode removed
+
 let cameraStream = null;
 let currentFacing = "user"; // "user" (front) or "environment" (back)
 let animationFrameId = null;
@@ -111,18 +111,12 @@ let dragCounter = 0;
 
 // ─── DOM References ───
 const videoEl = document.getElementById("camera-feed");
-const userPhotoFeed = document.getElementById("user-photo-feed");
 const canvasEl = document.getElementById("garment-canvas");
 const ctx = canvasEl.getContext("2d", { desynchronized: true, alpha: true });
 
-// Mode Switcher Elements
-const btnModeCamera = document.getElementById("btn-mode-camera");
-const btnModePhoto = document.getElementById("btn-mode-photo");
-const userPhotoInput = document.getElementById("user-photo-input");
-const photoUploadPrompt = document.getElementById("photo-upload-prompt");
-const btnBrowsePhoto = document.getElementById("btn-browse-photo");
-const btnFallbackPhoto = document.getElementById("btn-fallback-photo");
-const topbarLiveBadge = document.getElementById("topbar-live-badge");
+const btnRequestPerm = document.getElementById("btn-request-perm");
+const btnRetryCam = document.getElementById("btn-retry-camera");
+
 
 // Active Outfit Panel Elements
 const activeOutfitPanel = document.getElementById("active-outfit-panel");
@@ -210,22 +204,30 @@ async function initCamera(facingMode = "user") {
 
   try {
     cameraStream = await navigator.mediaDevices.getUserMedia(highConstraints);
-    setupStream(cameraStream, facingMode);
+    await setupStream(cameraStream, facingMode);
   } catch (errHigh) {
-    console.warn("[VESTORA] High constraints failed, attempting fallback:", errHigh);
+    const isPermissionError = errHigh?.name === "NotAllowedError" || 
+                              String(errHigh?.message || "").toLowerCase().includes("permission") ||
+                              String(errHigh?.message || "").toLowerCase().includes("dismiss");
+
+    if (isPermissionError) {
+      handleCameraFailure(errHigh);
+      return;
+    }
+
+    // If hardware constraint issue (e.g. resolution not supported), try fallback constraints
+    console.warn("[VESTORA] High constraints not supported, attempting standard video:", errHigh?.name || errHigh);
     try {
-      // Fallback constraints for laptops/smartphones with simpler cameras
       const fallbackConstraints = {
         video: { facingMode: { ideal: facingMode } },
         audio: false,
       };
       cameraStream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
-      setupStream(cameraStream, facingMode);
+      await setupStream(cameraStream, facingMode);
     } catch (errFallback) {
-      console.warn("[VESTORA] Fallback constraints failed, attempting standard video:", errFallback);
       try {
         cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        setupStream(cameraStream, facingMode);
+        await setupStream(cameraStream, facingMode);
       } catch (errFinal) {
         handleCameraFailure(errFinal);
       }
@@ -260,18 +262,29 @@ async function setupStream(stream, facingMode) {
 }
 
 function handleCameraFailure(err) {
-  console.error("[VESTORA] Camera init failed completely:", err);
+  console.warn("[VESTORA] Camera permission or device access required:", err?.name, err?.message);
   showBodyIndicator(false);
 
   const isIframe = window.parent !== window;
   if (isIframe) {
     cameraErrorMessage.textContent = 
-      "This shopping site restricts camera access inside embedded views. Open VESTORA in Chrome Side Panel or a separate window for unrestricted access.";
+      "This shopping site restricts camera access in embedded views. Click below to enable camera access in a dedicated window.";
   } else {
     cameraErrorMessage.textContent = 
-      "Camera access was denied or no camera device was found. Please allow camera permissions in your browser settings.";
+      "Camera permission is required for live try-on. Click below to allow camera access in Chrome.";
   }
   showCameraBlocked();
+}
+
+function requestCameraPermissionTab() {
+  if (typeof chrome !== "undefined" && chrome.tabs?.create) {
+    chrome.tabs.create({
+      url: chrome.runtime.getURL("tryon/permission.html"),
+      active: true,
+    });
+  } else {
+    initCamera(currentFacing);
+  }
 }
 
 function showCameraBlocked() {
@@ -316,16 +329,9 @@ function startRenderLoop() {
     }
     lastFrameTime = timestamp;
 
-    if (currentInputMode === "photo") {
-      if (!userPhotoLoaded || !userPhotoFeed || !userPhotoFeed.complete) return;
-      const pose = estimateBasePose(canvasEl.width, canvasEl.height);
-      updateMeasurements(pose, canvasEl.width, canvasEl.height);
-      ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-      renderAllOutfitLayers(pose, canvasEl.width, canvasEl.height, false);
-      return;
-    }
-
+    // Camera-only render path
     if (!isBodyDetected || !videoEl.videoWidth) return;
+
 
     // Run pose estimation (baseline geometric with 19 landmarks)
     const pose = estimateBasePose(videoEl.videoWidth, videoEl.videoHeight);
@@ -1541,17 +1547,13 @@ function takeScreenshot() {
   compositeCanvas.height = videoEl.videoHeight || 720;
   const compCtx = compositeCanvas.getContext("2d");
 
-  // Draw background: camera feed or uploaded photo
+  // Draw background: live camera video
   compCtx.save();
-  if (currentInputMode === "photo" && userPhotoFeed?.complete) {
-    compCtx.drawImage(userPhotoFeed, 0, 0, compositeCanvas.width, compositeCanvas.height);
-  } else {
-    if (currentFacing === "user") {
-      compCtx.translate(compositeCanvas.width, 0);
-      compCtx.scale(-1, 1);
-    }
-    compCtx.drawImage(videoEl, 0, 0);
+  if (currentFacing === "user") {
+    compCtx.translate(compositeCanvas.width, 0);
+    compCtx.scale(-1, 1);
   }
+  compCtx.drawImage(videoEl, 0, 0);
   compCtx.restore();
 
   // Draw garment overlay
@@ -1663,86 +1665,26 @@ async function grabProductFromCurrentTab() {
   }
 }
 
-// ─── Mode Switching: Live Camera vs Uploaded Photo ───
+// ─── Camera Permission & Action Listeners ───
 
-function switchToCameraMode() {
-  currentInputMode = "camera";
-  btnModeCamera?.classList.add("active");
-  btnModePhoto?.classList.remove("active");
-  userPhotoFeed?.classList.add("hidden");
-  photoUploadPrompt?.classList.add("hidden");
-  videoEl.classList.remove("hidden");
+btnRequestPerm?.addEventListener("click", requestCameraPermissionTab);
+btnRetryCam?.addEventListener("click", () => initCamera(currentFacing));
 
-  if (topbarLiveBadge) {
-    topbarLiveBadge.textContent = "LIVE";
-    topbarLiveBadge.style.background = "var(--v-red)";
-  }
+// Listen for permission granted notification from helper tab
+if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message?.type === "VESTORA_CAMERA_GRANTED") {
+      hideCameraBlocked();
+      initCamera(currentFacing);
+    }
+  });
+}
 
+// Auto-retry when window/tab regains focus (e.g. after user grants permission in prompt)
+window.addEventListener("focus", () => {
   if (!cameraStream) {
     initCamera(currentFacing);
-  } else {
-    isBodyDetected = true;
-    startRenderLoop();
   }
-}
-
-function switchToPhotoMode() {
-  currentInputMode = "photo";
-  btnModePhoto?.classList.add("active");
-  btnModeCamera?.classList.remove("active");
-  videoEl.classList.add("hidden");
-  cameraBlockedCard?.classList.add("hidden");
-
-  if (topbarLiveBadge) {
-    topbarLiveBadge.textContent = "PHOTO";
-    topbarLiveBadge.style.background = "#8b5cf6";
-  }
-
-  if (userPhotoLoaded && userPhotoFeed?.complete) {
-    userPhotoFeed.classList.remove("hidden");
-    photoUploadPrompt?.classList.add("hidden");
-    isBodyDetected = true;
-    startRenderLoop();
-  } else {
-    userPhotoFeed?.classList.add("hidden");
-    photoUploadPrompt?.classList.remove("hidden");
-  }
-}
-
-function handleUserPhotoUpload(file) {
-  if (!file || !file.type.startsWith("image/")) {
-    showToast("Please choose an image file (PNG, JPG, WebP)");
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const dataUrl = e.target.result;
-    if (userPhotoFeed) {
-      userPhotoFeed.onload = () => {
-        userPhotoLoaded = true;
-        photoUploadPrompt?.classList.add("hidden");
-        userPhotoFeed.classList.remove("hidden");
-        isBodyDetected = true;
-        showToast("✦ Photo loaded! Virtual Try-On active.");
-        startRenderLoop();
-      };
-      userPhotoFeed.src = dataUrl;
-    }
-  };
-  reader.readAsDataURL(file);
-}
-
-// Mode Switcher Listeners
-btnModeCamera?.addEventListener("click", switchToCameraMode);
-btnModePhoto?.addEventListener("click", switchToPhotoMode);
-btnBrowsePhoto?.addEventListener("click", () => userPhotoInput?.click());
-btnFallbackPhoto?.addEventListener("click", () => {
-  switchToPhotoMode();
-  userPhotoInput?.click();
-});
-userPhotoInput?.addEventListener("change", (e) => {
-  const file = e.target.files?.[0];
-  if (file) handleUserPhotoUpload(file);
 });
 
 // ─── Event Listeners ───

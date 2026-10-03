@@ -16,23 +16,8 @@
         <span class="topbar-badge" id="topbar-live-badge">LIVE</span>
       </div>
 
-      <!-- Mode Switcher: Live Camera vs Uploaded Photo -->
-      <div class="mode-switcher" id="mode-switcher">
-        <button id="btn-mode-camera" class="mode-tab active" type="button" title="Live Webcam Try-On">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-          <span>Camera</span>
-        </button>
-        <button id="btn-mode-photo" class="mode-tab" type="button" title="Upload Photo Try-On">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-          <span>Photo</span>
-        </button>
-      </div>
-
-      <!-- Hidden file input for uploading user's photo -->
-      <input type="file" id="user-photo-input" accept="image/*" style="display: none !important;" />
-
       <div class="topbar-actions">
-        <!-- Grab from active store tab (Bypasses drag-and-drop restrictions on Myntra, Ajio, etc.) -->
+        <!-- Grab from active store tab -->
         <button id="btn-grab-page" class="topbar-btn topbar-btn-grab" aria-label="Grab Product from Page" title="Grab clothing from active store tab (Myntra, Ajio, Zara, etc.)">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         </button>
@@ -59,26 +44,14 @@
       </div>
     </header>
 
-    <!-- ── Camera / Photo + Overlay Canvas Viewport ── -->
+    <!-- ── Live Camera + Overlay Canvas Viewport ── -->
     <main id="tryon-viewport" class="tryon-viewport">
-      <!-- Camera feed -->
+      <!-- Live camera feed (ONLY mode) -->
       <video id="camera-feed" class="camera-video" autoplay playsinline muted></video>
-      <!-- Uploaded user photo feed (for photo mode) -->
-      <img id="user-photo-feed" class="user-photo-image hidden" alt="Uploaded User" />
       <!-- Garment overlay canvas (layered on top) -->
       <canvas id="garment-canvas" class="garment-canvas"></canvas>
 
-      <!-- Photo Upload Prompt (shown when in photo mode with no photo loaded yet) -->
-      <div id="photo-upload-prompt" class="photo-upload-prompt hidden">
-        <div class="photo-prompt-card">
-          <div class="photo-prompt-icon">📸</div>
-          <h3>Try On with Your Photo</h3>
-          <p>Upload a full-body or portrait photo to see this garment rendered on you 100% on-device.</p>
-          <button id="btn-browse-photo" class="btn-browse-photo" type="button">Select Photo</button>
-        </div>
-      </div>
-
-      <!-- Drag & Drop Overlay Target (Anywear Signature Feature) -->
+      <!-- Drag & Drop Overlay Target -->
       <div id="drop-zone-overlay" class="drop-zone-overlay hidden">
         <div class="drop-zone-card">
           <div class="drop-zone-icon-glow">
@@ -89,21 +62,20 @@
         </div>
       </div>
 
-      <!-- Camera Restricted / Blocked Fallback Card -->
+      <!-- Camera Permission Blocked Card -->
       <div id="camera-blocked-card" class="camera-blocked-card hidden">
         <div class="blocked-card-inner">
           <div class="blocked-icon">📹</div>
-          <h3>Camera Permission Needed</h3>
-          <p id="camera-error-message">This website's security policy restricts camera access inside embedded views.</p>
+          <h3>Allow Camera Access</h3>
+          <p id="camera-error-message">VESTORA needs camera access to try on clothes live on your body. Click below to grant camera access.</p>
           <div class="blocked-btn-group">
-            <button id="btn-fallback-sidepanel" class="btn-fallback primary">Open in Side Panel</button>
-            <button id="btn-fallback-window" class="btn-fallback secondary">Open Pop-out Window</button>
-            <button id="btn-fallback-photo" class="btn-fallback accent">Try with Uploaded Photo</button>
+            <button id="btn-request-perm" class="btn-fallback primary">✦ Enable Camera</button>
+            <button id="btn-retry-camera" class="btn-fallback secondary">↺ Retry</button>
           </div>
         </div>
       </div>
 
-      <!-- Fit Fine-Tuning Floating Controls (Expandable) -->
+      <!-- Fit Fine-Tuning Floating Controls -->
       <div id="fit-controls-panel" class="fit-controls-panel hidden">
         <div class="fit-control-row">
           <span class="fit-label">Scale:</span>
@@ -144,7 +116,7 @@
       <!-- Garment loading spinner -->
       <div id="garment-loader" class="garment-loader hidden">
         <div class="loader-spinner"></div>
-        <span class="loader-label">Processing garment cutout…</span>
+        <span class="loader-label">Processing garment…</span>
       </div>
 
       <!-- FPS / Performance HUD (debug) -->
@@ -160,7 +132,7 @@
       <div class="product-info-strip">
         <img id="product-thumb" class="product-thumb" src="" alt="Product" />
         <div class="product-details">
-          <p id="product-name" class="product-name">Ready for Try-On</p>
+          <p id="product-name" class="product-name">Ready for Live Try-On</p>
           <p id="product-category" class="product-category">Select an item from any fashion store</p>
         </div>
         <div class="info-strip-actions">
@@ -170,7 +142,7 @@
         </div>
       </div>
 
-      <!-- ── Multi-Item Active Outfit Panel (Mixed Garments & Accessories) ── -->
+      <!-- ── Multi-Item Active Outfit Panel ── -->
       <div id="active-outfit-panel" class="active-outfit-panel">
         <div class="outfit-panel-header">
           <div class="outfit-header-left">
@@ -186,16 +158,13 @@
             <button id="btn-clear-outfit" class="outfit-action-btn text-muted" type="button" title="Clear all items">Clear All</button>
           </div>
         </div>
-        <!-- Active Outfit Layers -->
-        <div id="outfit-layers-list" class="outfit-layers-list">
-          <!-- Dynamically populated with layer chips: Jacket, Sunglasses, Watch, etc. -->
-        </div>
+        <div id="outfit-layers-list" class="outfit-layers-list"></div>
       </div>
 
-      <!-- Helpful Platform Guidance (for Google Images, Myntra, Ajio, Amazon, etc.) -->
+      <!-- Platform hint -->
       <div class="platform-hint-strip">
         <span class="hint-sparkle">💡</span>
-        <span class="hint-text">Google Images & Stores: Hover/Click <strong>✦ Try with VESTORA</strong> on any item to add it to this live camera!</span>
+        <span class="hint-text">On any fashion store: hover/click <strong>✦ Try with VESTORA</strong> on any item to try it live!</span>
       </div>
 
       <!-- Integrated Size Engine -->
@@ -205,7 +174,6 @@
           <span class="size-engine-title">AI Size Recommendation</span>
         </div>
         <div class="size-engine-body">
-          <!-- Body measurements (auto-detected) -->
           <div class="measurement-grid">
             <div class="measurement-item">
               <span class="measurement-label">Shoulder</span>
@@ -224,24 +192,20 @@
               <span id="meas-torso" class="measurement-value">--</span>
             </div>
           </div>
-          <!-- Recommended size -->
           <div class="recommended-size">
             <span class="rec-label">Recommended Size</span>
             <div id="recommended-size-value" class="rec-value">--</div>
           </div>
-          <!-- Available sizes -->
           <div class="available-sizes">
             <span class="sizes-label">Available Sizes</span>
-            <div id="size-options" class="sizes-row">
-              <!-- Populated by JS -->
-            </div>
+            <div id="size-options" class="sizes-row"></div>
           </div>
         </div>
       </div>
 
       <!-- Privacy + branding footer -->
       <div class="tryon-footer">
-        <span class="footer-privacy">🔒 100% On-Device Processing · Video Never Uploaded</span>
+        <span class="footer-privacy">🔒 100% On-Device · Video Never Uploaded · FREE · NO QUEUE</span>
         <span class="footer-brand">VESTORA v1.0</span>
       </div>
     </footer>

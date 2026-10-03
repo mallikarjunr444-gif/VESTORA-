@@ -208,23 +208,17 @@ const logger = new Logger("ProductDetector");
     logger.info("User requested try-on for:", product.name);
     activeProduct = product;
 
-    // Notify background worker — store product AND open Side Panel
-    // Side Panel = extension context = camera ALWAYS works (no per-site permission walls)
+    // Open VESTORA Side-Left Live Try-On Popup Window
     const message: ExtensionMessage<Product> = {
-      type: "VESTORA_OPEN_SIDEPANEL",
+      type: "VESTORA_OPEN_WINDOW",
       payload: product,
     };
     chrome.runtime.sendMessage(message).catch((err) => {
-      logger.warn("Could not open side panel, falling back to window:", err);
-      // Last resort: open popup window
-      chrome.runtime.sendMessage({
-        type: "VESTORA_OPEN_WINDOW",
-        payload: product,
-      }).catch(() => {});
+      logger.warn("Could not open try-on window:", err);
     });
 
-    // Show a brief toast on the page so user knows to look at the side panel
-    showPageToast(`✦ VESTORA opening — look for the side panel →`);
+    // Show a brief toast on the page so user knows try-on is launching
+    showPageToast(`✦ VESTORA Live Try-On opening…`);
   }
 
   function showPageToast(msg: string) {

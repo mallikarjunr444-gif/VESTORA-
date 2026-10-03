@@ -221,12 +221,20 @@ if (chrome.contextMenus) {
 }
 
 function openTryOnWindow(product?: Product): void {
+  if (product) {
+    chrome.storage.local.set({
+      [STORAGE_KEYS.ACTIVE_PRODUCT]: product,
+      vestora_pending_product: product,
+    });
+  }
   const productParam = product ? `?product=${encodeURIComponent(JSON.stringify(product))}` : "";
   chrome.windows.create({
     url: chrome.runtime.getURL(`tryon/tryon.html${productParam}`),
     type: "popup",
+    left: 20,
+    top: 60,
     width: 480,
-    height: 820,
+    height: 840,
     focused: true,
   });
 }
