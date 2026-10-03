@@ -48,7 +48,8 @@
     }
   ],
   "side_panel": {
-    "default_path": "tryon/tryon.html"
+    "default_path": "tryon/tryon.html",
+    "default_width": 420
   },
   "permissions": [
     "storage",

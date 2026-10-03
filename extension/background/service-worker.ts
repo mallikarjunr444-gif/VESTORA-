@@ -119,13 +119,26 @@ chrome.runtime.onMessage.addListener(
 
       case "VESTORA_OPEN_SIDEPANEL": {
         const windowId = sender.tab?.windowId;
+        const tabId = sender.tab?.id;
         const product = message.payload as Product | undefined;
         if (product) {
-          chrome.storage.local.set({ [STORAGE_KEYS.ACTIVE_PRODUCT]: product });
+          // Store with BOTH keys — ACTIVE_PRODUCT for popup, vestora_pending_product for tryon.js auto-load
+          chrome.storage.local.set({
+            [STORAGE_KEYS.ACTIVE_PRODUCT]: product,
+            vestora_pending_product: product,
+          });
         }
         if ((chrome as any).sidePanel?.open && windowId) {
           (chrome as any).sidePanel.open({ windowId })
-            .then(() => sendResponse({ success: true }))
+            .then(() => {
+              // After side panel opens, also push product via runtime message to tryon.html
+              setTimeout(() => {
+                if (tabId) {
+                  chrome.runtime.sendMessage({ type: "VESTORA_LOAD_PRODUCT", product }).catch(() => {});
+                }
+              }, 800);
+              sendResponse({ success: true });
+            })
             .catch((err: unknown) => {
               logger.warn("Failed to open sidePanel, falling back to window:", err);
               openTryOnWindow(product);

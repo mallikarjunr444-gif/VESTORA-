@@ -208,22 +208,48 @@ const logger = new Logger("ProductDetector");
     logger.info("User requested try-on for:", product.name);
     activeProduct = product;
 
-    // Notify background worker
+    // Notify background worker — store product AND open Side Panel
+    // Side Panel = extension context = camera ALWAYS works (no per-site permission walls)
     const message: ExtensionMessage<Product> = {
-      type: "VESTORA_PRODUCT_DETECTED",
+      type: "VESTORA_OPEN_SIDEPANEL",
       payload: product,
     };
-    chrome.runtime.sendMessage(message).catch(() => {});
+    chrome.runtime.sendMessage(message).catch((err) => {
+      logger.warn("Could not open side panel, falling back to window:", err);
+      // Last resort: open popup window
+      chrome.runtime.sendMessage({
+        type: "VESTORA_OPEN_WINDOW",
+        payload: product,
+      }).catch(() => {});
+    });
 
-    // If panel is already open, add item to active outfit (multi-item layering)
-    if (document.getElementById("vestora-panel-host")) {
-      addProductToPanel(product);
-      return;
-    }
-
-    // Open the left-side Shadow DOM panel (camera runs in content script — no iframe CSP issues)
-    openVestoraPanel(product);
+    // Show a brief toast on the page so user knows to look at the side panel
+    showPageToast(`✦ VESTORA opening — look for the side panel →`);
   }
+
+  function showPageToast(msg: string) {
+    const toast = document.createElement("div");
+    toast.style.cssText = `
+      position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
+      background:linear-gradient(135deg,#7c3aed,#4f46e5); color:#fff;
+      padding:12px 24px; border-radius:100px; font-family:'Inter',sans-serif;
+      font-size:14px; font-weight:600; z-index:2147483647; opacity:0;
+      box-shadow:0 8px 32px rgba(124,58,237,0.4); transition:all 0.3s cubic-bezier(.34,1.56,.64,1);
+      white-space:nowrap; letter-spacing:0.02em;
+    `;
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => {
+      toast.style.opacity = "1";
+      toast.style.transform = "translateX(-50%) translateY(0)";
+    });
+    setTimeout(() => {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateX(-50%) translateY(20px)";
+      setTimeout(() => toast.remove(), 400);
+    }, 3000);
+  }
+
 
   // Initial scan
   scanDOM(document);
@@ -247,7 +273,7 @@ const logger = new Logger("ProductDetector");
       logger.info("Received request to open try-on from popup/action");
       const prod = activeProduct || getHeroProduct();
       if (prod) {
-        openVestoraPanel(prod);
+        handleTryOnClick(prod);
         sendResponse?.({ success: true, product: prod });
       } else {
         const images = Array.from(document.querySelectorAll<HTMLImageElement>("img"));
@@ -255,7 +281,7 @@ const logger = new Logger("ProductDetector");
           if (isCandidateFashionImage(img)) {
             const imageUrl = extractBestImageUrl(img);
             const product = extractProductFromElement(img, imageUrl);
-            openVestoraPanel(product);
+            handleTryOnClick(product);
             sendResponse?.({ success: true, product });
             break;
           }
@@ -263,6 +289,7 @@ const logger = new Logger("ProductDetector");
       }
       return false;
     }
+
 
     if (msg && msg.type === "VESTORA_REQUEST_PAGE_PRODUCT") {
       const prod = activeProduct || getHeroProduct();

@@ -1857,7 +1857,25 @@ updateSizePills("M");
 // Initialize Camera
 initCamera("user");
 
-// Parse product from URL parameters if available
+// ─── Auto-load product from chrome.storage (Side Panel / Popup Window flow) ───
+
+async function autoLoadProductFromStorage() {
+  if (typeof chrome === "undefined" || !chrome.storage) return;
+  try {
+    const data = await chrome.storage.local.get(["vestora_active_product", "vestora_pending_product"]);
+    const product = data["vestora_pending_product"] || data["vestora_active_product"];
+    if (product && product.imageUrl) {
+      // Clear the pending flag so it doesn't re-load on next open
+      await chrome.storage.local.remove("vestora_pending_product");
+      loadProduct(product);
+      showToast(`✦ Live Try-On ready for "${product.name?.slice(0, 28) || "Selected Item"}"`);
+    }
+  } catch (e) {
+    console.warn("[VESTORA] Could not read product from storage:", e);
+  }
+}
+
+// Parse product from URL parameters if available (popup window fallback)
 const urlParams = new URLSearchParams(window.location.search);
 const productParam = urlParams.get("product");
 if (productParam) {
@@ -1867,4 +1885,7 @@ if (productParam) {
   } catch (e) {
     console.warn("[VESTORA] Failed to parse product parameter:", e);
   }
+} else {
+  // No URL param → try chrome.storage (side panel flow)
+  autoLoadProductFromStorage();
 }
