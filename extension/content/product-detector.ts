@@ -14,7 +14,7 @@
  *   ↓
  * 3. Triggers: Floating Corner Badge + In-Image "Try with VESTORA" Pills
  *   ↓
- * 4. Virtual Try-On Execution (Iframe / SidePanel / Window)
+ * 4. Virtual Try-On Execution (Shadow DOM Left Panel — no iframe CSP issues)
  */
 
 import type { ExtensionMessage, Product } from "../../shared/types/index.js";
@@ -28,6 +28,7 @@ import {
 import { attachTryOnButton, attachCornerFloatingBadge, attachSideFloatingDock } from "./tryon-button.js";
 import { extractProductFromElement } from "./product-extractor.js";
 import { isGoogleImagesPage, initGoogleImagesScanner } from "./google-images-adapter.js";
+import { openVestoraPanel, addProductToPanel } from "./vestora-panel.js";
 
 const logger = new Logger("ProductDetector");
 
@@ -207,26 +208,6 @@ const logger = new Logger("ProductDetector");
     logger.info("User requested try-on for:", product.name);
     activeProduct = product;
 
-    // Check if live try-on widget is already open on page (Multi-item layering)
-    const existingIframe = document.getElementById("vestora-tryon-frame") as HTMLIFrameElement | null;
-    if (existingIframe && existingIframe.contentWindow) {
-      existingIframe.contentWindow.postMessage({
-        type: "VESTORA_ADD_OUTFIT_ITEM",
-        product: product,
-      }, "*");
-
-      const toast = document.createElement("div");
-      toast.className = "vestora-feedback-toast";
-      toast.innerHTML = `<span class="vestora-toast-icon">✦</span> Added <strong>${product.name.slice(0, 28)}…</strong> to active live try-on!`;
-      document.body.appendChild(toast);
-      setTimeout(() => toast.classList.add("is-visible"), 10);
-      setTimeout(() => {
-        toast.classList.remove("is-visible");
-        setTimeout(() => toast.remove(), 400);
-      }, 2600);
-      return;
-    }
-
     // Notify background worker
     const message: ExtensionMessage<Product> = {
       type: "VESTORA_PRODUCT_DETECTED",
@@ -234,168 +215,14 @@ const logger = new Logger("ProductDetector");
     };
     chrome.runtime.sendMessage(message).catch(() => {});
 
-    // Show feedback toast
-    const toast = document.createElement("div");
-    toast.className = "vestora-feedback-toast";
-    toast.innerHTML = `<span class="vestora-toast-icon">✦</span> Starting VESTORA Live Try-On for <strong>${product.name.slice(0, 32)}…</strong>`;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.classList.add("is-visible"), 10);
-    setTimeout(() => {
-      toast.classList.remove("is-visible");
-      setTimeout(() => toast.remove(), 400);
-    }, 2800);
-
-    // Open try-on widget
-    openTryOnWidget(product);
-  }
-
-  function openTryOnWidget(product: Product) {
-    // Remove existing widget if open
-    const existing = document.getElementById("vestora-tryon-container");
-    if (existing) {
-      existing.remove();
-      document.body.style.overflow = "";
+    // If panel is already open, add item to active outfit (multi-item layering)
+    if (document.getElementById("vestora-panel-host")) {
+      addProductToPanel(product);
+      return;
     }
 
-    // Floating window container (draggable, non-blocking pane)
-    const container = document.createElement("div");
-    container.id = "vestora-tryon-container";
-    container.className = "vestora-pane-mode";
-
-    // Header bar: "Try-On ✦ VESTORA"
-    const header = document.createElement("div");
-    header.className = "vestora-pane-header";
-    header.innerHTML = `
-      <div class="vestora-pane-title">
-        <span>Try-On</span>
-        <span class="vestora-pane-sparkle">✦</span>
-        <span class="vestora-pane-brand">VESTORA</span>
-        <span class="vestora-pane-free-badge">FREE · NO QUEUE</span>
-      </div>
-      <div class="vestora-pane-actions">
-        <button type="button" class="vestora-pane-btn" id="vestora-pane-expand" title="Toggle Fullscreen" aria-label="Toggle Fullscreen">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-        </button>
-        <button type="button" class="vestora-pane-btn" id="vestora-pane-close" title="Close" aria-label="Close">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-    `;
-
-    // Try-on iframe
-    const iframe = document.createElement("iframe");
-    iframe.id = "vestora-tryon-frame";
-    iframe.allow = "camera; microphone; autoplay; fullscreen";
-    iframe.src = chrome.runtime.getURL("tryon/tryon.html");
-
-    iframe.addEventListener("load", () => {
-      if (iframe.contentWindow) {
-        iframe.contentWindow.postMessage({
-          type: "VESTORA_LOAD_PRODUCT",
-          product: product,
-        }, "*");
-      }
-    });
-
-    container.appendChild(header);
-    container.appendChild(iframe);
-    document.body.appendChild(container);
-
-    // Draggable header logic
-    let isDragging = false;
-    let startX = 0;
-    let startY = 0;
-    let startLeft = 0;
-    let startTop = 0;
-
-    header.addEventListener("mousedown", (e) => {
-      const target = e.target as HTMLElement;
-      if (target.closest(".vestora-pane-btn")) return;
-      if (container.classList.contains("vestora-fullscreen-mode")) return;
-
-      isDragging = true;
-      startX = e.clientX;
-      startY = e.clientY;
-      const rect = container.getBoundingClientRect();
-      startLeft = rect.left;
-      startTop = rect.top;
-
-      container.style.bottom = "auto";
-      container.style.right = "auto";
-      container.style.left = `${startLeft}px`;
-      container.style.top = `${startTop}px`;
-      e.preventDefault();
-    });
-
-    const onMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      const newLeft = Math.max(8, Math.min(window.innerWidth - container.offsetWidth - 8, startLeft + dx));
-      const newTop = Math.max(8, Math.min(window.innerHeight - container.offsetHeight - 8, startTop + dy));
-      container.style.left = `${newLeft}px`;
-      container.style.top = `${newTop}px`;
-    };
-
-    const onMouseUp = () => {
-      isDragging = false;
-    };
-
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-
-    // Fullscreen toggle
-    const expandBtn = header.querySelector("#vestora-pane-expand") as HTMLButtonElement | null;
-    expandBtn?.addEventListener("click", () => {
-      const isFull = container.classList.toggle("vestora-fullscreen-mode");
-      container.classList.toggle("vestora-pane-mode", !isFull);
-      if (isFull) {
-        document.body.style.overflow = "hidden";
-      } else {
-        document.body.style.overflow = "";
-      }
-    });
-
-    // Close button
-    const closeWidget = () => {
-      container.style.opacity = "0";
-      container.style.transform = "scale(0.96)";
-      setTimeout(() => {
-        container.remove();
-        document.body.style.overflow = "";
-      }, 200);
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-      window.removeEventListener("message", widgetMessageHandler);
-      document.removeEventListener("keydown", escHandler);
-    };
-
-    const closeBtn = header.querySelector("#vestora-pane-close") as HTMLButtonElement | null;
-    closeBtn?.addEventListener("click", closeWidget);
-
-    // Listen for messages from inside iframe
-    const widgetMessageHandler = (event: MessageEvent) => {
-      if (event.data?.type === "VESTORA_CLOSE_TRYON") {
-        closeWidget();
-      } else if (event.data?.type === "VESTORA_REQUEST_PAGE_PRODUCT") {
-        const prod = activeProduct || getHeroProduct();
-        if (iframe.contentWindow) {
-          iframe.contentWindow.postMessage({
-            type: "VESTORA_REQUEST_PAGE_PRODUCT_RESULT",
-            product: prod,
-          }, "*");
-        }
-      }
-    };
-    window.addEventListener("message", widgetMessageHandler);
-
-    // Close on Escape key
-    const escHandler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        closeWidget();
-      }
-    };
-    document.addEventListener("keydown", escHandler);
+    // Open the left-side Shadow DOM panel (camera runs in content script — no iframe CSP issues)
+    openVestoraPanel(product);
   }
 
   // Initial scan
@@ -420,7 +247,7 @@ const logger = new Logger("ProductDetector");
       logger.info("Received request to open try-on from popup/action");
       const prod = activeProduct || getHeroProduct();
       if (prod) {
-        openTryOnWidget(prod);
+        openVestoraPanel(prod);
         sendResponse?.({ success: true, product: prod });
       } else {
         const images = Array.from(document.querySelectorAll<HTMLImageElement>("img"));
@@ -428,7 +255,7 @@ const logger = new Logger("ProductDetector");
           if (isCandidateFashionImage(img)) {
             const imageUrl = extractBestImageUrl(img);
             const product = extractProductFromElement(img, imageUrl);
-            openTryOnWidget(product);
+            openVestoraPanel(product);
             sendResponse?.({ success: true, product });
             break;
           }
