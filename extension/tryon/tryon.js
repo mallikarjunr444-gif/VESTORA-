@@ -643,18 +643,21 @@ if (currentProduct) {
 }
 // Only invoke RT‑VTON when the category is supported.
 if (RT_VTON_SUPPORTED.includes(garmentItem.garmentCategory)) {
-  vtonManager.renderVtonFrame(videoEl, garmentItem).then(res => {
-    if (res && res.frame_image_b64) {
-      const img = new Image();
-      img.onload = () => ctx.drawImage(img, 0, 0, canvasEl.width, canvasEl.height);
-      img.src = res.frame_image_b64;
-    }
-  }).catch(e => {
-    console.warn("[VESTORA] RT‑VTON frame render error:", e);
-    // Fallback to in‑house rendering on error or unsupported category.
-    renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
-  });
-  // Early return – RT‑VTON handled this frame.
+        vtonManager.renderVtonFrame(videoEl, garmentItem)
+            .then(res => {
+                if (res && res.frame_image_b64) {
+                    const img = new Image();
+                    img.onload = () => ctx.drawImage(img, 0, 0, canvasEl.width, canvasEl.height);
+                    img.src = `data:image/png;base64,${res.frame_image_b64}`;
+                }
+            })
+            .catch(e => {
+                console.warn("[VESTORA] RT‑VTON frame render error:", e);
+                // Fallback to in‑house rendering on error or unsupported category.
+                renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
+            });
+        // Early return – RT‑VTON handled this frame.
+        return;
   return;
     // Early return – RT‑VTON handled this frame.
     return;

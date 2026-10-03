@@ -54,13 +54,15 @@ class RTVTONInferenceSession:
         """Initializes model weights and verifies inference readiness"""
         try:
             print(f"[VESTORA RT-VTON] Initializing RT-VTON Inference Session on device: {self.device}")
+            # Import and instantiate the full-body VTON processor with a pretrained checkpoint.
+            from VITON.viton_fullbody_seq import FullBodySeqFrameProcessor
+            self.frame_processor = FullBodySeqFrameProcessor('coat_seq_vmssdp2ta_576')
             self.is_ready = True
             return True
         except Exception as e:
-            print(f"[VESTORA RT-VTON] Standalone initialization: {e}")
-            self.device = "cpu"
-            self.is_ready = True
-            return True
+            print(f"[VESTORA RT-VTON] Model loading failed: {e}")
+            self.is_ready = False
+            return False
 
     def should_process_frame(self) -> bool:
         """Determines if enough time has elapsed to process a new frame (frame throttle)"""
@@ -86,7 +88,19 @@ class RTVTONInferenceSession:
         """
         self.last_inference_time = time.time()
         self.total_frames += 1
-        
+        # Try model inference using RT-VTON
+        if hasattr(self, "frame_processor"):
+            try:
+                person_np = np.array(person_img.convert("RGB"))
+                garment_np = np.array(garment_img.convert("RGB"))
+                combined = np.concatenate([person_np, garment_np], axis=1)
+                result_np = self.frame_processor.forward(combined)
+                result_img = Image.fromarray(result_np)
+                self.cached_output = result_img.convert("RGB")
+                return self.cached_output
+            except Exception as exc:
+                print(f"[VESTORA RT-VTON] Model inference error: {exc}")
+        # Fallback to original overlay logic
         pw, ph = person_img.size
         orig_rgba = person_img.convert("RGBA")
         garment_rgba = garment_img.convert("RGBA")
