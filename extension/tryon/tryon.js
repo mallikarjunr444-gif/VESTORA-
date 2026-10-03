@@ -1700,17 +1700,17 @@ function setupFitControls() {
   btnResetFit?.addEventListener("click", () => {
     fitScale = 1.0;
     fitOffsetY = 0;
-    fitOpacity = 0.88;
+    fitOpacity = 1.0;
     if (selectedLayerId) {
       const layer = activeOutfit.find((l) => l.id === selectedLayerId);
       if (layer) {
         layer.scale = 1.0;
         layer.offsetY = 0;
-        layer.opacity = 0.88;
+        layer.opacity = 1.0;
       }
     }
     if (fitScaleVal) fitScaleVal.textContent = "100%";
-    if (fitOpacitySlider) fitOpacitySlider.value = "88";
+    if (fitOpacitySlider) fitOpacitySlider.value = "100";
     showToast("Fit reset to default");
   });
 

@@ -104,7 +104,7 @@ let selectedLayerId = null;
 // Fit adjustments
 let fitScale = 1.0;
 let fitOffsetY = 0;
-let fitOpacity = 0.88;
+let fitOpacity = 1.0;
 
 // Drag & drop state
 let dragCounter = 0;
@@ -353,43 +353,141 @@ function startRenderLoop() {
   animationFrameId = requestAnimationFrame(frame);
 }
 
-// ─── Pose Estimation & Smoothing (19 Anatomical Landmarks) ───
+// ─── Dynamic Webcam Pose Estimation & Torso Tracking ───
+
+let trackerCanvas = null;
+let trackerCtx = null;
+let lastDetectedFace = null;
+let trackerFrameCounter = 0;
+
+function detectUserTorsoFromCamera(width, height) {
+  if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) {
+    return null;
+  }
+
+  trackerFrameCounter++;
+  // Sample every 4th frame for high performance & silky 60 FPS
+  if (trackerFrameCounter % 4 !== 0 && lastDetectedFace) {
+    return lastDetectedFace;
+  }
+
+  try {
+    if (!trackerCanvas) {
+      trackerCanvas = document.createElement("canvas");
+      trackerCanvas.width = 80;
+      trackerCanvas.height = 60;
+      trackerCtx = trackerCanvas.getContext("2d", { willReadFrequently: true });
+    }
+
+    trackerCtx.drawImage(videoEl, 0, 0, 80, 60);
+    const imgData = trackerCtx.getImageData(0, 0, 80, 60);
+    const data = imgData.data;
+
+    let skinPixelCount = 0;
+    let sumX = 0;
+    let sumY = 0;
+    let minX = 80, maxX = 0, minY = 60, maxY = 0;
+
+    // Scan the upper 65% of the frame for human facial skin tones
+    for (let y = 4; y < 42; y++) {
+      for (let x = 8; x < 72; x++) {
+        const idx = (y * 80 + x) * 4;
+        const r = data[idx];
+        const g = data[idx + 1];
+        const b = data[idx + 2];
+
+        // Kovac generalized skin chromaticity model
+        const isSkin = r > 75 && g > 38 && b > 20 &&
+                       r > g && r > b &&
+                       Math.abs(r - g) > 12 &&
+                       (Math.max(r, g, b) - Math.min(r, g, b)) > 14;
+
+        if (isSkin) {
+          skinPixelCount++;
+          sumX += x;
+          sumY += y;
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    if (skinPixelCount > 30) {
+      const normCenterX = (sumX / skinPixelCount) / 80;
+      const normCenterY = (sumY / skinPixelCount) / 60;
+      const normWidth = Math.max(0.18, Math.min(0.42, (maxX - minX + 8) / 80));
+      const normHeight = Math.max(0.20, Math.min(0.44, (maxY - minY + 10) / 60));
+
+      const newFace = {
+        centerX: normCenterX,
+        centerY: normCenterY,
+        width: normWidth,
+        height: normHeight,
+      };
+
+      if (lastDetectedFace) {
+        lastDetectedFace = {
+          centerX: lastDetectedFace.centerX * 0.75 + newFace.centerX * 0.25,
+          centerY: lastDetectedFace.centerY * 0.75 + newFace.centerY * 0.25,
+          width: lastDetectedFace.width * 0.85 + newFace.width * 0.15,
+          height: lastDetectedFace.height * 0.85 + newFace.height * 0.15,
+        };
+      } else {
+        lastDetectedFace = newFace;
+      }
+      return lastDetectedFace;
+    }
+  } catch (e) {
+    // Canvas read fallback
+  }
+
+  return lastDetectedFace;
+}
 
 function estimateBasePose(width, height) {
-  const eyeY = height * 0.15;
-  const noseY = height * 0.18;
-  const crownY = height * 0.08;
-  const neckY = height * 0.25;
-  const shoulderY = height * 0.31;
-  const elbowY = height * 0.49;
-  const wristY = height * 0.62;
-  const hipY = height * 0.64;
-  const kneeY = height * 0.82;
-  const ankleY = height * 0.96;
+  const face = detectUserTorsoFromCamera(width, height);
+
+  // Dynamic user webcam sitting posture:
+  // When sitting at laptop/desktop, head is at ~30% height, neck at ~48%, shoulders at ~56%, chest at 50-95%
+  const headCenterX = face ? face.centerX * width : width * 0.50;
+  const headCenterY = face ? face.centerY * height : height * 0.30;
+  const headW = face ? face.width * width : width * 0.26;
+  const headH = face ? face.height * height : height * 0.28;
+
+  const eyeY = headCenterY - headH * 0.15;
+  const noseY = headCenterY;
+  const chinY = headCenterY + headH * 0.52;
+  const neckY = headCenterY + headH * 0.68;              // Collarbone sits right below chin
+  const shoulderY = headCenterY + headH * 0.90;          // Shoulders sit slightly below collarbone
+  const shoulderHalfWidth = headW * 1.35;               // Broad anatomical shoulder span
+  const torsoHeight = headH * 2.8;                      // Drapes down to cover user's shirt
+  const hipY = Math.min(height * 0.99, shoulderY + torsoHeight);
 
   return {
     landmarks: [
-      { x: width * 0.50, y: noseY, v: 0.95 },      // 0: Nose
-      { x: width * 0.46, y: eyeY, v: 0.95 },       // 1: L Eye
-      { x: width * 0.54, y: eyeY, v: 0.95 },       // 2: R Eye
-      { x: width * 0.40, y: noseY, v: 0.90 },      // 3: L Ear
-      { x: width * 0.60, y: noseY, v: 0.90 },      // 4: R Ear
-      { x: width * 0.37, y: shoulderY, v: 0.92 },  // 5: L Shoulder
-      { x: width * 0.63, y: shoulderY, v: 0.92 },  // 6: R Shoulder
-      { x: width * 0.29, y: elbowY, v: 0.88 },     // 7: L Elbow
-      { x: width * 0.71, y: elbowY, v: 0.88 },     // 8: R Elbow
-      { x: width * 0.24, y: wristY, v: 0.86 },     // 9: L Wrist
-      { x: width * 0.76, y: wristY, v: 0.86 },     // 10: R Wrist
-      { x: width * 0.40, y: hipY, v: 0.85 },       // 11: L Hip
-      { x: width * 0.60, y: hipY, v: 0.85 },       // 12: R Hip
-      { x: width * 0.41, y: kneeY, v: 0.80 },      // 13: L Knee
-      { x: width * 0.59, y: kneeY, v: 0.80 },      // 14: R Knee
-      { x: width * 0.42, y: ankleY, v: 0.78 },     // 15: L Ankle
-      { x: width * 0.58, y: ankleY, v: 0.78 },     // 16: R Ankle
-      { x: width * 0.50, y: crownY, v: 0.92 },     // 17: Head Crown
-      { x: width * 0.50, y: neckY, v: 0.92 },      // 18: Neck
+      { x: headCenterX, y: noseY, v: 0.95 },                         // 0: Nose
+      { x: headCenterX - headW * 0.22, y: eyeY, v: 0.95 },          // 1: L Eye
+      { x: headCenterX + headW * 0.22, y: eyeY, v: 0.95 },          // 2: R Eye
+      { x: headCenterX - headW * 0.48, y: noseY, v: 0.90 },         // 3: L Ear
+      { x: headCenterX + headW * 0.48, y: noseY, v: 0.90 },         // 4: R Ear
+      { x: headCenterX - shoulderHalfWidth, y: shoulderY, v: 0.95 },// 5: L Shoulder
+      { x: headCenterX + shoulderHalfWidth, y: shoulderY, v: 0.95 },// 6: R Shoulder
+      { x: headCenterX - shoulderHalfWidth * 1.15, y: shoulderY + torsoHeight * 0.5, v: 0.88 }, // 7: L Elbow
+      { x: headCenterX + shoulderHalfWidth * 1.15, y: shoulderY + torsoHeight * 0.5, v: 0.88 }, // 8: R Elbow
+      { x: headCenterX - shoulderHalfWidth * 1.25, y: shoulderY + torsoHeight * 0.85, v: 0.86 },// 9: L Wrist
+      { x: headCenterX + shoulderHalfWidth * 1.25, y: shoulderY + torsoHeight * 0.85, v: 0.86 },// 10: R Wrist
+      { x: headCenterX - shoulderHalfWidth * 0.85, y: hipY, v: 0.85 }, // 11: L Hip
+      { x: headCenterX + shoulderHalfWidth * 0.85, y: hipY, v: 0.85 }, // 12: R Hip
+      { x: headCenterX - shoulderHalfWidth * 0.8, y: height * 0.98, v: 0.80 }, // 13: L Knee
+      { x: headCenterX + shoulderHalfWidth * 0.8, y: height * 0.98, v: 0.80 }, // 14: R Knee
+      { x: headCenterX - shoulderHalfWidth * 0.8, y: height * 1.0, v: 0.78 },  // 15: L Ankle
+      { x: headCenterX + shoulderHalfWidth * 0.8, y: height * 1.0, v: 0.78 },  // 16: R Ankle
+      { x: headCenterX, y: headCenterY - headH * 0.55, v: 0.92 },    // 17: Head Crown
+      { x: headCenterX, y: neckY, v: 0.95 },                         // 18: Neck / Collarbone
     ],
-    confidence: 0.94,
+    confidence: 0.96,
     timestamp: performance.now(),
   };
 }
@@ -730,20 +828,24 @@ function renderBelt(pose, canvasWidth, canvasHeight, item, isMirrored) {
 function renderUpperBodyGarment(pose, canvasWidth, canvasHeight, item, isMirrored) {
   const lShoulder = pose.landmarks[POSE_LANDMARK.LEFT_SHOULDER];
   const rShoulder = pose.landmarks[POSE_LANDMARK.RIGHT_SHOULDER];
+  const neck = pose.landmarks[POSE_LANDMARK.NECK];
   const lHip = pose.landmarks[POSE_LANDMARK.LEFT_HIP];
-  if (!lShoulder || !rShoulder || !lHip) return;
+  if (!lShoulder || !rShoulder) return;
 
   const shoulderWidth = Math.abs(rShoulder.x - lShoulder.x);
-  const torsoHeight = Math.abs(lHip.y - lShoulder.y);
+  const torsoHeight = lHip ? Math.abs(lHip.y - lShoulder.y) : canvasHeight * 0.45;
   const scale = item.scale || 1.0;
   const offsetY = item.offsetY || 0;
-  const opacity = item.opacity !== undefined ? item.opacity : fitOpacity;
+  const opacity = item.opacity !== undefined ? item.opacity : 1.0;
 
-  const garmentWidth = shoulderWidth * 2.2 * scale;
-  const garmentHeight = torsoHeight * 1.45 * scale;
+  // Garment width covers shoulders and upper torso naturally
+  const garmentWidth = shoulderWidth * 1.38 * scale;
+  const garmentHeight = torsoHeight * 1.25 * scale;
 
   const centerX = (lShoulder.x + rShoulder.x) / 2;
-  const topY = lShoulder.y - (garmentHeight * 0.08) + offsetY;
+  // Collar aligns right at the base of the neck / collarbone, below the chin
+  const collarY = neck ? neck.y : lShoulder.y;
+  const topY = collarY - (garmentHeight * 0.05) + offsetY;
 
   const drawX = isMirrored
     ? canvasWidth - centerX - garmentWidth / 2
@@ -759,7 +861,9 @@ function renderUpperBodyGarment(pose, canvasWidth, canvasHeight, item, isMirrore
   ctx.translate(-(drawX + garmentWidth / 2), -(topY + garmentHeight / 2));
 
   const src = item.processedCanvas || item.imageElement || item.source;
-  if (src) ctx.drawImage(src, drawX, topY, garmentWidth, garmentHeight);
+  if (src) {
+    ctx.drawImage(src, drawX, topY, garmentWidth, garmentHeight);
+  }
   ctx.restore();
 }
 
@@ -837,11 +941,11 @@ function processGarmentCutout(img) {
 
 function processItemCutout(img) {
   try {
-    const offscreen = document.createElement("canvas");
     const ow = img.naturalWidth || img.width;
     const oh = img.naturalHeight || img.height;
     if (!ow || !oh) return null;
 
+    const offscreen = document.createElement("canvas");
     offscreen.width = ow;
     offscreen.height = oh;
     const octx = offscreen.getContext("2d", { willReadFrequently: true });
@@ -850,46 +954,139 @@ function processItemCutout(img) {
     const imgData = octx.getImageData(0, 0, ow, oh);
     const data = imgData.data;
 
-    // Sample the 4 corner pixels to determine background color
-    const corners = [
-      0, // top-left
-      (ow - 1) * 4, // top-right
-      ((oh - 1) * ow) * 4, // bottom-left
-      ((oh * ow) - 1) * 4 // bottom-right
-    ];
+    // Sample border pixels along top, bottom, left, right to find true studio background color
+    let bgR = 0, bgG = 0, bgB = 0, borderCount = 0;
+    const stepX = Math.max(1, Math.floor(ow / 25));
+    const stepY = Math.max(1, Math.floor(oh / 25));
 
-    let avgR = 0, avgG = 0, avgB = 0;
-    corners.forEach((idx) => {
-      avgR += data[idx];
-      avgG += data[idx + 1];
-      avgB += data[idx + 2];
-    });
-    avgR /= 4; avgG /= 4; avgB /= 4;
+    for (let x = 0; x < ow; x += stepX) {
+      let i = x * 4;
+      bgR += data[i]; bgG += data[i + 1]; bgB += data[i + 2];
+      i = ((oh - 1) * ow + x) * 4;
+      bgR += data[i]; bgG += data[i + 1]; bgB += data[i + 2];
+      borderCount += 2;
+    }
+    for (let y = 0; y < oh; y += stepY) {
+      let i = (y * ow) * 4;
+      bgR += data[i]; bgG += data[i + 1]; bgB += data[i + 2];
+      i = (y * ow + (ow - 1)) * 4;
+      bgR += data[i]; bgG += data[i + 1]; bgB += data[i + 2];
+      borderCount += 2;
+    }
 
-    // If corners are light/white (standard catalog photo > 215)
-    const isLightBackground = avgR > 215 && avgG > 215 && avgB > 215;
+    bgR /= borderCount;
+    bgG /= borderCount;
+    bgB /= borderCount;
 
-    if (isLightBackground) {
-      const threshold = 40;
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
+    // Check if background is studio / catalog light backdrop
+    const avgLight = (bgR + bgG + bgB) / 3;
+    if (avgLight < 175) {
+      return offscreen; // Dark or non-studio photo, retain as is
+    }
 
-        // Euclidean color distance to background
-        const dist = Math.sqrt((r - avgR) ** 2 + (g - avgG) ** 2 + (b - avgB) ** 2);
-        if (dist < threshold) {
-          // Soft edge feathering
-          const alphaFactor = Math.max(0, (dist - 15) / (threshold - 15));
-          data[i + 3] = Math.round(data[i + 3] * alphaFactor);
+    const threshold = 36;
+    const visited = new Uint8Array(ow * oh);
+    const queue = new Int32Array(ow * oh);
+    let qHead = 0;
+    let qTail = 0;
+
+    const colorDist = (r, g, b) => Math.sqrt((r - bgR) ** 2 + (g - bgG) ** 2 + (b - bgB) ** 2);
+
+    // Seed BFS flood-fill from all 4 outer borders of the image
+    for (let x = 0; x < ow; x++) {
+      const idxTop = x * 4;
+      if (colorDist(data[idxTop], data[idxTop + 1], data[idxTop + 2]) < threshold + 16) {
+        visited[x] = 1;
+        queue[qTail++] = x;
+      }
+      const posB = (oh - 1) * ow + x;
+      const idxB = posB * 4;
+      if (colorDist(data[idxB], data[idxB + 1], data[idxB + 2]) < threshold + 16) {
+        visited[posB] = 1;
+        queue[qTail++] = posB;
+      }
+    }
+
+    for (let y = 0; y < oh; y++) {
+      const posL = y * ow;
+      const idxL = posL * 4;
+      if (!visited[posL] && colorDist(data[idxL], data[idxL + 1], data[idxL + 2]) < threshold + 16) {
+        visited[posL] = 1;
+        queue[qTail++] = posL;
+      }
+      const posR = y * ow + (ow - 1);
+      const idxR = posR * 4;
+      if (!visited[posR] && colorDist(data[idxR], data[idxR + 1], data[idxR + 2]) < threshold + 16) {
+        visited[posR] = 1;
+        queue[qTail++] = posR;
+      }
+    }
+
+    // Traverse connected background pixels and erase them
+    while (qHead < qTail) {
+      const pos = queue[qHead++];
+      const px = pos % ow;
+      const py = Math.floor(pos / ow);
+      const idx = pos * 4;
+
+      const r = data[idx];
+      const g = data[idx + 1];
+      const b = data[idx + 2];
+      const dist = colorDist(r, g, b);
+
+      if (dist < threshold) {
+        data[idx + 3] = 0; // Transparent
+      } else {
+        const alpha = Math.max(0, Math.min(1, (dist - threshold) / 16));
+        data[idx + 3] = Math.round(data[idx + 3] * alpha);
+      }
+
+      // Check 4-connected neighbors
+      const neighbors = [
+        pos - 1,
+        pos + 1,
+        pos - ow,
+        pos + ow,
+      ];
+
+      if (px > 0 && !visited[neighbors[0]]) {
+        const nPos = neighbors[0];
+        const nIdx = nPos * 4;
+        if (colorDist(data[nIdx], data[nIdx + 1], data[nIdx + 2]) < threshold + 16) {
+          visited[nPos] = 1;
+          queue[qTail++] = nPos;
         }
       }
-      octx.putImageData(imgData, 0, 0);
-      return offscreen;
+      if (px < ow - 1 && !visited[neighbors[1]]) {
+        const nPos = neighbors[1];
+        const nIdx = nPos * 4;
+        if (colorDist(data[nIdx], data[nIdx + 1], data[nIdx + 2]) < threshold + 16) {
+          visited[nPos] = 1;
+          queue[qTail++] = nPos;
+        }
+      }
+      if (py > 0 && !visited[neighbors[2]]) {
+        const nPos = neighbors[2];
+        const nIdx = nPos * 4;
+        if (colorDist(data[nIdx], data[nIdx + 1], data[nIdx + 2]) < threshold + 16) {
+          visited[nPos] = 1;
+          queue[qTail++] = nPos;
+        }
+      }
+      if (py < oh - 1 && !visited[neighbors[3]]) {
+        const nPos = neighbors[3];
+        const nIdx = nPos * 4;
+        if (colorDist(data[nIdx], data[nIdx + 1], data[nIdx + 2]) < threshold + 16) {
+          visited[nPos] = 1;
+          queue[qTail++] = nPos;
+        }
+      }
     }
-    return null; // Use original image directly
+
+    octx.putImageData(imgData, 0, 0);
+    return offscreen;
   } catch (e) {
-    console.warn("[VESTORA] Background cutout skipped (likely tainted canvas or CORS):", e);
+    console.warn("[VESTORA] processItemCutout error:", e);
     return null;
   }
 }
@@ -1207,38 +1404,51 @@ function addOutfitItem(product, options = {}) {
 
   // Load image asset for the item
   garmentLoader?.classList.remove("hidden");
-  const img = new Image();
-  img.crossOrigin = "anonymous";
-  img.onload = () => {
-    garmentLoader?.classList.add("hidden");
-    newItem.imageElement = img;
-    const cutout = processItemCutout(img);
-    newItem.processedCanvas = cutout;
 
-    garmentImage = img;
-    processedGarmentCanvas = cutout;
-
-    renderOutfitLayersList();
-    showToast(`✦ Added ${newItem.name.slice(0, 24)}… to live try-on!`);
-    updateSizePills(recommendedSizeValue?.textContent || "M");
-  };
-
-  img.onerror = () => {
-    garmentLoader?.classList.add("hidden");
+  if (newItem.imageUrl.startsWith("http") && typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
     loadItemViaBgFetch(newItem);
-  };
-
-  img.src = newItem.imageUrl;
+  } else {
+    loadDirectImage(newItem);
+  }
 
   renderOutfitLayersList();
   updateOutfitCountBadge();
 }
 
+function loadDirectImage(item) {
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => {
+    garmentLoader?.classList.add("hidden");
+    item.imageElement = img;
+    const cutout = processItemCutout(img);
+    item.processedCanvas = cutout;
+
+    if (currentProduct?.id === item.id) {
+      garmentImage = img;
+      processedGarmentCanvas = cutout;
+    }
+
+    renderOutfitLayersList();
+    showToast(`✦ Added ${item.name.slice(0, 24)}… to live try-on!`);
+    updateSizePills(recommendedSizeValue?.textContent || "M");
+  };
+
+  img.onerror = () => {
+    garmentLoader?.classList.add("hidden");
+    loadItemViaBgFetch(item);
+  };
+
+  img.src = item.imageUrl;
+}
+
 function loadItemViaBgFetch(item) {
+  garmentLoader?.classList.remove("hidden");
   if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
     chrome.runtime.sendMessage(
       { type: "VESTORA_FETCH_IMAGE", payload: { url: item.imageUrl } },
       (response) => {
+        garmentLoader?.classList.add("hidden");
         if (response?.success && response.dataUrl) {
           const img = new Image();
           img.onload = () => {
@@ -1249,14 +1459,17 @@ function loadItemViaBgFetch(item) {
               processedGarmentCanvas = item.processedCanvas;
             }
             renderOutfitLayersList();
-            showToast(`✦ Loaded ${item.name.slice(0, 24)}… (via secure proxy)!`);
+            showToast(`✦ Applied ${item.name.slice(0, 24)}… to your body!`);
+            updateSizePills(recommendedSizeValue?.textContent || "M");
           };
           img.src = response.dataUrl;
         } else {
-          showToast(`⚠ Could not load image for ${item.name}`);
+          loadDirectImage(item);
         }
       }
     );
+  } else {
+    loadDirectImage(item);
   }
 }
 
@@ -1487,17 +1700,17 @@ function setupFitControls() {
   btnResetFit?.addEventListener("click", () => {
     fitScale = 1.0;
     fitOffsetY = 0;
-    fitOpacity = 0.88;
+    fitOpacity = 1.0;
     if (selectedLayerId) {
       const layer = activeOutfit.find((l) => l.id === selectedLayerId);
       if (layer) {
         layer.scale = 1.0;
         layer.offsetY = 0;
-        layer.opacity = 0.88;
+        layer.opacity = 1.0;
       }
     }
     if (fitScaleVal) fitScaleVal.textContent = "100%";
-    if (fitOpacitySlider) fitOpacitySlider.value = "88";
+    if (fitOpacitySlider) fitOpacitySlider.value = "100";
     showToast("Fit reset to default");
   });
 
