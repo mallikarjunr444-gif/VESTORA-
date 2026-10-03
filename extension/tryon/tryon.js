@@ -616,7 +616,7 @@ function startRenderLoop() {
     const isMirrored = currentFacing === "user" && currentInputMode === "camera";
 
     // Determine if RT-VTON engine is active and server is reachable
-    if (this.activeEngine && this.activeEngine === "rt_vton" && this.serverOnline) {
+    if (vtonManager.activeEngine && vtonManager.activeEngine === "rt_vton" && vtonManager.serverOnline) {
       // Use backend RT-VTON for real-time try‑on
       const garmentItem = currentProduct || { garmentCategory: "upper_body", imageUrl: garmentImage?.src || null };
       vtonManager.renderVtonFrame(videoEl, garmentItem).then(res => {
