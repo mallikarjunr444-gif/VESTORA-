@@ -85,8 +85,8 @@ const SAMPLE_GARMENTS = [
 let currentSampleIndex = 0;
 
 // ─── State ───
-let currentInputMode = "camera"; // "camera" | "photo"
-let userPhotoLoaded = false;
+let currentInputMode = "camera"; // always camera — photo mode removed
+
 let cameraStream = null;
 let currentFacing = "user"; // "user" (front) or "environment" (back)
 let animationFrameId = null;
@@ -115,14 +115,9 @@ const userPhotoFeed = document.getElementById("user-photo-feed");
 const canvasEl = document.getElementById("garment-canvas");
 const ctx = canvasEl.getContext("2d", { desynchronized: true, alpha: true });
 
-// Mode Switcher Elements
 const btnModeCamera = document.getElementById("btn-mode-camera");
-const btnModePhoto = document.getElementById("btn-mode-photo");
-const userPhotoInput = document.getElementById("user-photo-input");
-const photoUploadPrompt = document.getElementById("photo-upload-prompt");
-const btnBrowsePhoto = document.getElementById("btn-browse-photo");
-const btnFallbackPhoto = document.getElementById("btn-fallback-photo");
-const topbarLiveBadge = document.getElementById("topbar-live-badge");
+const btnRetryCam = document.getElementById("btn-retry-camera");
+
 
 // Active Outfit Panel Elements
 const activeOutfitPanel = document.getElementById("active-outfit-panel");
@@ -316,16 +311,9 @@ function startRenderLoop() {
     }
     lastFrameTime = timestamp;
 
-    if (currentInputMode === "photo") {
-      if (!userPhotoLoaded || !userPhotoFeed || !userPhotoFeed.complete) return;
-      const pose = estimateBasePose(canvasEl.width, canvasEl.height);
-      updateMeasurements(pose, canvasEl.width, canvasEl.height);
-      ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-      renderAllOutfitLayers(pose, canvasEl.width, canvasEl.height, false);
-      return;
-    }
-
+    // Camera-only render path
     if (!isBodyDetected || !videoEl.videoWidth) return;
+
 
     // Run pose estimation (baseline geometric with 19 landmarks)
     const pose = estimateBasePose(videoEl.videoWidth, videoEl.videoHeight);

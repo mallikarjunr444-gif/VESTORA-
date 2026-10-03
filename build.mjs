@@ -46,6 +46,7 @@ async function build() {
   fs.copyFileSync("extension/tryon/tryon.html", "dist/tryon/tryon.html");
   fs.copyFileSync("extension/tryon/tryon.css", "dist/tryon/tryon.css");
   fs.copyFileSync("extension/tryon/tryon.js", "dist/tryon/tryon.js");
+  fs.copyFileSync("extension/tryon/permission.html", "dist/tryon/permission.html");
 
   await copyDir("extension/assets", "dist/assets");
 

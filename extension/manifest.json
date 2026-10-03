@@ -42,7 +42,8 @@
         "styles/overlay.css",
         "tryon/tryon.html",
         "tryon/tryon.css",
-        "tryon/tryon.js"
+        "tryon/tryon.js",
+        "tryon/permission.html"
       ],
       "matches": ["<all_urls>"]
     }
@@ -56,9 +57,6 @@
     "activeTab",
     "sidePanel",
     "contextMenus"
-  ],
-  "optional_permissions": [
-    "camera"
   ],
   "host_permissions": [
     "<all_urls>"
