@@ -14,9 +14,17 @@
       <div class="topbar-brand">
         <img src="../assets/logo/vestora-logo.png" alt="VESTORA" class="topbar-logo" />
         <span class="topbar-badge" id="topbar-live-badge">LIVE</span>
+        <button id="topbar-engine-badge" class="topbar-engine-badge" title="AI VTON Engine Status (Lucy-VTON) & Settings">
+          <span class="engine-dot" id="engine-dot"></span>
+          <span id="topbar-engine-text">AI VTON</span>
+        </button>
       </div>
 
       <div class="topbar-actions">
+        <!-- AI VTON Settings -->
+        <button id="btn-engine-settings" class="topbar-btn topbar-btn-engine" aria-label="AI VTON Engine Settings" title="Configure Real-Time AI VTON Engine (Lucy-VTON)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
         <!-- Grab from active store tab -->
         <button id="btn-grab-page" class="topbar-btn topbar-btn-grab" aria-label="Grab Product from Page" title="Grab clothing from active store tab (Myntra, Ajio, Zara, etc.)">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -44,10 +52,12 @@
       </div>
     </header>
 
-    <!-- ── Live Camera + Overlay Canvas Viewport ── -->
+    <!-- ── Live Camera + Real-Time VTON Viewport ── -->
     <main id="tryon-viewport" class="tryon-viewport">
-      <!-- Live camera feed (ONLY mode) -->
+      <!-- Live camera feed (background capture & tracking) -->
       <video id="camera-feed" class="camera-video" autoplay playsinline muted></video>
+      <!-- Live Real-Time AI VTON Transformed Video (lucy-vton-latest over WebRTC) -->
+      <video id="vton-video" class="vton-video" autoplay playsinline muted></video>
       <!-- Garment overlay canvas (layered on top) -->
       <canvas id="garment-canvas" class="garment-canvas"></canvas>
 
@@ -103,6 +113,60 @@
           <div class="paste-modal-actions">
             <button id="btn-submit-url" class="btn-modal-action primary">Load</button>
             <button id="btn-cancel-url" class="btn-modal-action secondary">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Real-Time AI VTON Engine Settings Modal -->
+      <div id="engine-settings-modal" class="engine-settings-modal hidden">
+        <div class="engine-modal-card">
+          <div class="engine-modal-header">
+            <div class="engine-modal-title-row">
+              <span class="engine-modal-sparkle">✦</span>
+              <h3>Real-Time AI VTON Engine</h3>
+            </div>
+            <button id="btn-close-engine-modal" class="btn-close-modal" aria-label="Close Settings">×</button>
+          </div>
+
+          <div class="engine-modal-body">
+            <div class="engine-spec-badge">
+              <span class="spec-label">Model:</span>
+              <span class="spec-value">lucy-vton-latest · WebRTC 720p @ 30 FPS</span>
+            </div>
+
+            <p class="engine-modal-desc">
+              Anywear-grade live AI video transformation. The garment stays spatially locked to your shoulders and chest, maintains temporal consistency across frames, and naturally renders arms in front of the shirt when moving or dancing.
+            </p>
+
+            <div class="engine-status-banner" id="engine-status-banner">
+              <span class="status-indicator-dot" id="engine-status-indicator"></span>
+              <span class="status-message" id="engine-status-message">Checking WebRTC engine status...</span>
+            </div>
+
+            <div class="engine-form-group">
+              <label for="input-decart-api-key" class="form-label">
+                <span>Decart API Key</span>
+                <a href="https://platform.decart.ai" target="_blank" rel="noopener noreferrer" class="form-link">Get API Key ↗</a>
+              </label>
+              <div class="input-with-button">
+                <input type="password" id="input-decart-api-key" class="form-input" placeholder="Paste your API key (decart_...)" autocomplete="off" />
+                <button id="btn-toggle-key-visibility" class="btn-input-icon" type="button" title="Show / Hide Key">👁</button>
+              </div>
+              <span class="form-help">Saved locally in your browser. Used to establish direct WebRTC connection with the realtime try-on model.</span>
+            </div>
+
+            <div class="engine-server-section">
+              <div class="server-status-row">
+                <span class="server-label">Local Token Server:</span>
+                <span id="server-status-pill" class="server-status-pill">Checking http://localhost:3000…</span>
+              </div>
+              <p class="server-hint">Run <code>npm start</code> in the <code>server/</code> folder to provide backend ephemeral client tokens automatically.</p>
+            </div>
+          </div>
+
+          <div class="engine-modal-footer">
+            <button id="btn-save-engine-settings" class="btn-modal-action primary">✦ Save & Connect VTON</button>
+            <button id="btn-disconnect-vton" class="btn-modal-action secondary">Disconnect</button>
           </div>
         </div>
       </div>

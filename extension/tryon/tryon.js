@@ -1632,6 +1632,9 @@ function loadDirectImage(item) {
     renderOutfitLayersList();
     showToast(`✦ Added ${item.name.slice(0, 24)}… to live try-on!`);
     updateSizePills(recommendedSizeValue?.textContent || "M");
+
+    // Automatically send new garment to the active Real-Time VTON session (no camera reconnect!)
+    vtonManager.switchGarment(item);
   };
 
   img.onerror = () => {
@@ -1661,6 +1664,9 @@ function loadItemViaBgFetch(item) {
             renderOutfitLayersList();
             showToast(`✦ Applied ${item.name.slice(0, 24)}… to your body!`);
             updateSizePills(recommendedSizeValue?.textContent || "M");
+
+            // Automatically send new garment to the active Real-Time VTON session (no camera reconnect!)
+            vtonManager.switchGarment(item);
           };
           img.src = response.dataUrl;
         } else {
@@ -1685,6 +1691,9 @@ function selectOutfitLayer(id) {
     productThumb.style.display = "block";
     productThumb.src = layer.imageUrl;
   }
+
+  // Switch garment on active live VTON stream
+  vtonManager.switchGarment(layer);
 
   fitScale = layer.scale || 1.0;
   fitOffsetY = layer.offsetY || 0;
@@ -2028,6 +2037,9 @@ function cleanup() {
     cameraStream.getTracks().forEach((t) => t.stop());
     cameraStream = null;
   }
+  if (vtonManager) {
+    vtonManager.disconnect();
+  }
   window.removeEventListener("resize", resizeCanvas);
 }
 
@@ -2164,10 +2176,62 @@ btnClose?.addEventListener("click", () => {
   }
 });
 
+// ─── AI VTON Engine Settings Modal ───
+
+function setupEngineModal() {
+  function openModal() {
+    vtonManager.checkServer().then(() => vtonManager.updateUI());
+    if (inputDecartApiKey) {
+      inputDecartApiKey.value = vtonManager.storedApiKey;
+    }
+    engineSettingsModal?.classList.remove("hidden");
+  }
+
+  function closeModal() {
+    engineSettingsModal?.classList.add("hidden");
+  }
+
+  topbarEngineBadge?.addEventListener("click", openModal);
+  btnEngineSettings?.addEventListener("click", openModal);
+  btnCloseEngineModal?.addEventListener("click", closeModal);
+
+  btnToggleKeyVisibility?.addEventListener("click", () => {
+    if (!inputDecartApiKey) return;
+    inputDecartApiKey.type = inputDecartApiKey.type === "password" ? "text" : "password";
+  });
+
+  btnSaveEngineSettings?.addEventListener("click", async () => {
+    const key = (inputDecartApiKey?.value || "").trim();
+    vtonManager.storedApiKey = key;
+
+    try {
+      if (typeof chrome !== "undefined" && chrome.storage?.local) {
+        await chrome.storage.local.set({ vestora_decart_api_key: key });
+      } else {
+        localStorage.setItem("vestora_decart_api_key", key);
+      }
+    } catch {}
+
+    closeModal();
+    vtonManager.updateUI();
+
+    if (cameraStream) {
+      await vtonManager.connect(cameraStream, currentProduct);
+    } else {
+      showToast("✦ API Key saved. Start camera to stream.");
+    }
+  });
+
+  btnDisconnectVton?.addEventListener("click", () => {
+    vtonManager.disconnect();
+    closeModal();
+  });
+}
+
 // Listen for messages from parent frame (content script)
 window.addEventListener("message", (event) => {
   if (!event.data || typeof event.data !== "object") return;
-  if (event.data.type === "VESTORA_LOAD_PRODUCT") {
+  if (event.data.type === "VESTORA_LOAD_PRODUCT" || event.data.type === "VESTORA_SWITCH_GARMENT") {
     loadProduct(event.data.product);
   }
   if (event.data.type === "VESTORA_ADD_OUTFIT_ITEM") {
@@ -2186,10 +2250,10 @@ window.addEventListener("message", (event) => {
   }
 });
 
-// Listen for messages from background service worker
+// Listen for messages from background service worker (seamless garment switching on active stream!)
 if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((msg) => {
-    if (msg?.type === "VESTORA_LOAD_PRODUCT") {
+    if (msg?.type === "VESTORA_LOAD_PRODUCT" || msg?.type === "VESTORA_SWITCH_GARMENT") {
       loadProduct(msg.product);
     }
     if (msg?.type === "VESTORA_ADD_OUTFIT_ITEM") {
@@ -2202,6 +2266,7 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 
 setupDragAndDrop();
 setupFitControls();
+setupEngineModal();
 
 [measShoulder, measChest, measWaist, measTorso].forEach((el) => {
   el?.classList.add("is-loading");
