@@ -339,14 +339,14 @@ class VestoraInHouseVTONManager {
         garmentData = garmentSrc.toDataURL("image/png");
       }
 
-      const resp = await fetch("http://localhost:3000/api/tryon", {
+      const resp = await fetch("http://localhost:3000/api/vton/try-on", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          person_image: personData,
-          garment_image: garmentData,
+          person: personData,
+          garment: garmentData,
           category: garmentItem.garmentCategory || "upper_body",
-          garment_name: garmentItem.name || "",
+          product_title: garmentItem.name || "",
         }),
         signal: AbortSignal.timeout(15000),
       });
@@ -356,6 +356,56 @@ class VestoraInHouseVTONManager {
     } catch (err) {
       console.warn("Neural VTON snapshot error:", err);
     }
+    return null;
+  }
+
+  async renderVtonFrame(videoElement, garmentItem) {
+    if (!videoElement || !garmentItem) return null;
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.min(640, videoElement.videoWidth || 640);
+      canvas.height = Math.min(480, videoElement.videoHeight || 480);
+      const cctx = canvas.getContext("2d");
+      cctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+      const frameData = canvas.toDataURL("image/jpeg", 0.75);
+
+      const garmentSrc = garmentItem.processedCanvas || garmentItem.imageElement;
+      let garmentData = garmentItem.imageUrl;
+      if (garmentSrc && garmentSrc.toDataURL) {
+        garmentData = garmentSrc.toDataURL("image/png");
+      }
+
+      const resp = await fetch("http://localhost:3000/api/vton/frame", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          frame: frameData,
+          garment: garmentData,
+          category: garmentItem.garmentCategory || "upper_body",
+        }),
+        signal: AbortSignal.timeout(3000),
+      });
+      if (resp.ok) {
+        return await resp.json();
+      }
+    } catch {}
+    return null;
+  }
+
+  async switchEngine(engineName) {
+    try {
+      const resp = await fetch("http://localhost:3000/api/vton/engine/switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ engine: engineName }),
+        signal: AbortSignal.timeout(3000),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        showToast(`✦ Active VTON Model: ${data.active_engine?.toUpperCase() || engineName.toUpperCase()}`);
+        return data;
+      }
+    } catch {}
     return null;
   }
 

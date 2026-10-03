@@ -1,3 +1,4 @@
-from .server import run_server, VTONRequestHandler
+from .vton_api import VTONApiHandler
+from .server import run_server
 
-__all__ = ["run_server", "VTONRequestHandler"]
+__all__ = ["VTONApiHandler", "run_server"]

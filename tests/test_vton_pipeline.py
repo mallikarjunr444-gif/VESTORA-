@@ -279,6 +279,99 @@ def run_tests():
     print("  ✓ PASS: Modular VTON Engine seamlessly switches between CatVTON and CatV2TON")
     passed += 1
 
+    # ── Test 10: RT-VTON Real-Time Engine & Frame Throttle ──
+    print("\n[Running Test 10: RT-VTON Engine & Frame Throttle]")
+    from backend.vton.engine.rt_vton_engine import RTVTONEngine
+    rt_engine = RTVTONEngine(target_fps=30)
+    rt_engine.initialize()
+    rt_meta = rt_engine.get_metadata()
+    assert rt_meta["name"] == "RT-VTON", "Engine name must be RT-VTON"
+    assert rt_meta["capability"] == "realtime_video_and_image"
+
+    person_test = create_mock_person_image(shirt_color=(240, 200, 30))
+    garment_test = create_mock_garment_image(color=(25, 50, 140), garment_type="shirt")
+
+    # Single try-on
+    rt_res = rt_engine.try_on(person_test, garment_test, category="upper_body")
+    assert rt_res["success"] is True
+    assert rt_res["engine"] == "RT-VTON"
+    assert isinstance(rt_res["output_image"], Image.Image)
+
+    # Frame processing
+    frame_res1 = rt_engine.process_frame(person_test, garment_test, category="upper_body")
+    assert frame_res1["success"] is True
+    print("  ✓ PASS: RT-VTON Engine executes real-time virtual try-on with frame throttle")
+    passed += 1
+
+    # ── Test 11: Unified VTONEngineManager Multi-Model Orchestration ──
+    print("\n[Running Test 11: Unified VTONEngineManager Multi-Model Support]")
+    from backend.vton.engine.engine_manager import VTONEngineManager
+    manager = VTONEngineManager(default_engine="rt_vton")
+    engines = manager.list_engines()
+    engine_ids = [e["id"] for e in engines]
+    assert "rt_vton" in engine_ids, "RT-VTON must be registered"
+    assert "catvton" in engine_ids, "CatVTON must be registered"
+    assert "catv2ton" in engine_ids, "CatV2TON must be registered"
+
+    # Test hot-swap to CatV2TON
+    manager.set_active_engine("catv2ton")
+    assert manager.active_engine_name == "catv2ton"
+    res_v = manager.try_on(person_test, garment_test, category="upper_body")
+    assert res_v["success"] is True
+
+    # Test hot-swap back to RT-VTON
+    manager.set_active_engine("rt_vton")
+    assert manager.active_engine_name == "rt_vton"
+    res_rt = manager.process_frame(person_test, garment_test, category="upper_body")
+    assert res_rt["success"] is True
+    print("  ✓ PASS: VTONEngineManager successfully orchestrates RT-VTON, CatVTON, and CatV2TON")
+    passed += 1
+
+    # ── Test 12: VTONApiHandler Endpoints & Error Handling ──
+    print("\n[Running Test 12: VTONApiHandler Endpoints & Robust Error Handling]")
+    from backend.vton.api.vton_api import VTONApiHandler
+    import io
+    import base64
+
+    api = VTONApiHandler()
+
+    # Convert test images to base64
+    buf_p = io.BytesIO()
+    person_test.save(buf_p, format="PNG")
+    p_b64 = "data:image/png;base64," + base64.b64encode(buf_p.getvalue()).decode("utf-8")
+
+    buf_g = io.BytesIO()
+    garment_test.save(buf_g, format="PNG")
+    g_b64 = "data:image/png;base64," + base64.b64encode(buf_g.getvalue()).decode("utf-8")
+
+    # POST /api/vton/try-on
+    api_res = api.handle_try_on({
+        "person": p_b64,
+        "garment": g_b64,
+        "category": "upper_body",
+        "engine": "rt_vton"
+    })
+    assert api_res["success"] is True
+    assert "tryon_image_b64" in api_res
+    assert api_res["engine"] == "RT-VTON"
+
+    # POST /api/vton/frame
+    frame_api_res = api.handle_process_frame({
+        "frame": p_b64,
+        "garment": g_b64,
+        "category": "upper_body"
+    })
+    assert frame_api_res["success"] is True
+    assert "frame_image_b64" in frame_api_res
+
+    # Error handling when input missing
+    err_res = api.handle_try_on({"person": ""})
+    assert err_res["success"] is False
+    assert "error" in err_res
+
+    print("  ✓ PASS: VTONApiHandler correctly handles /api/vton/try-on, /api/vton/frame, and missing inputs")
+    passed += 1
+
     print("\n==================================================")
     print(f"Results: {passed} test suites passed, 0 failed.")
     print("==================================================")

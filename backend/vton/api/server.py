@@ -18,10 +18,12 @@ from typing import Dict, Any
 from ..engine.pipeline import VTONPipeline
 from ..garment_classifier import GarmentClassifier
 from ..garment_extractor import GarmentExtractor
+from .vton_api import VTONApiHandler
 
 PORT = int(os.environ.get("VTON_PORT", 5000))
 
-# Global pipeline instance
+# Global pipeline and modular API handler instances
+api_handler = VTONApiHandler()
 pipeline = VTONPipeline()
 classifier = GarmentClassifier()
 extractor = GarmentExtractor()
@@ -49,17 +51,14 @@ class VTONRequestHandler(BaseHTTPRequestHandler):
             self._send_json({
                 "status": "ok",
                 "service": "VESTORA Modular VTON Engine API",
-                "version": "2.0.0",
-                "engine": "CatVTON-Modular",
-                "device": pipeline.engine.device
+                "version": "2.1.0",
+                "active_engine": api_handler.manager.active_engine_name,
+                "device": api_handler.manager.get_active_engine().device
             })
-        elif self.path == "/api/tryon/status":
-            self._send_json({
-                "status": "ready",
-                "active_engine": "CatVTON",
-                "device": pipeline.engine.device,
-                "metadata": pipeline.engine.get_metadata()
-            })
+        elif self.path in ["/api/tryon/status", "/api/vton/status"]:
+            self._send_json(api_handler.handle_status())
+        elif self.path in ["/api/vton/engines", "/api/engines"]:
+            self._send_json(api_handler.handle_list_engines())
         else:
             self._send_json({"error": "Not Found"}, status=404)
 
@@ -145,15 +144,24 @@ class VTONRequestHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self._send_json({"error": f"Video frame synthesis failed: {str(e)}"}, status=500)
 
-        # 5. POST /api/engine/switch
-        elif self.path == "/api/engine/switch":
-            engine_name = req_data.get("engine", "catv2ton")
+        # 5. POST /api/engine/switch or /api/vton/engine/switch
+        elif self.path in ["/api/engine/switch", "/api/vton/engine/switch"]:
+            engine_name = req_data.get("engine", "rt_vton")
+            res = api_handler.handle_switch_engine(req_data)
             pipeline.switch_engine(engine_name)
-            return self._send_json({
-                "success": True,
-                "active_engine": engine_name,
-                "metadata": pipeline.engine.get_metadata()
-            })
+            return self._send_json(res)
+
+        # 6. POST /api/vton/try-on (Universal endpoint for RT-VTON, CatVTON, CatV2TON)
+        elif self.path == "/api/vton/try-on":
+            res = api_handler.handle_try_on(req_data)
+            status_code = 200 if res.get("success") else 400
+            return self._send_json(res, status=status_code)
+
+        # 7. POST /api/vton/frame (Streaming camera frame endpoint)
+        elif self.path == "/api/vton/frame":
+            res = api_handler.handle_process_frame(req_data)
+            status_code = 200 if res.get("success") else 400
+            return self._send_json(res, status=status_code)
 
         else:
             self._send_json({"error": "Not Found"}, status=404)
@@ -163,8 +171,8 @@ def run_server(port: int = PORT):
     httpd = HTTPServer(server_address, VTONRequestHandler)
     print("==================================================")
     print(f"✨ VESTORA Modular AI VTON Server running on http://localhost:{port}")
-    print(f"✨ Active Engine: {pipeline.engine.get_metadata()['name']} ({pipeline.engine.device.upper()})")
-    print("✨ Endpoints: /api/tryon, /api/tryon/video-frame, /api/classify-garment, /api/extract-garment, /api/tryon/status")
+    print(f"✨ Active Engine: {api_handler.manager.active_engine_name.upper()} ({api_handler.manager.get_active_engine().device.upper()})")
+    print("✨ Endpoints: /api/vton/try-on, /api/vton/frame, /api/vton/engines, /api/tryon, /api/tryon/video-frame")
     print("==================================================")
     try:
         httpd.serve_forever()

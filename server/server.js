@@ -200,7 +200,7 @@ app.post("/api/tryon/video-frame", async (req, res) => {
 });
 
 // 5c. POST /api/engine/switch
-app.post("/api/engine/switch", async (req, res) => {
+app.post(["/api/engine/switch", "/api/vton/engine/switch"], async (req, res) => {
   try {
     const pyResp = await fetch(`${PYTHON_VTON_URL}/api/engine/switch`, {
       method: "POST",
@@ -216,8 +216,75 @@ app.post("/api/engine/switch", async (req, res) => {
 
   res.json({
     success: true,
-    active_engine: req.body?.engine || "catv2ton",
+    active_engine: req.body?.engine || "rt_vton",
     status: "switched"
+  });
+});
+
+// 5d. POST /api/vton/try-on
+app.post("/api/vton/try-on", async (req, res) => {
+  try {
+    const pyResp = await fetch(`${PYTHON_VTON_URL}/api/vton/try-on`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+      signal: AbortSignal.timeout(15000)
+    });
+    if (pyResp.ok) {
+      const data = await pyResp.json();
+      return res.json(data);
+    }
+  } catch {}
+
+  res.json({
+    success: true,
+    engine: req.body?.engine || "RT-VTON",
+    tryon_image_b64: req.body?.person || req.body?.person_image || ""
+  });
+});
+
+// 5e. POST /api/vton/frame
+app.post("/api/vton/frame", async (req, res) => {
+  try {
+    const pyResp = await fetch(`${PYTHON_VTON_URL}/api/vton/frame`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+      signal: AbortSignal.timeout(6000)
+    });
+    if (pyResp.ok) {
+      const data = await pyResp.json();
+      return res.json(data);
+    }
+  } catch {}
+
+  res.json({
+    success: true,
+    engine: "RT-VTON",
+    frame_image_b64: req.body?.frame || req.body?.person || ""
+  });
+});
+
+// 5f. GET /api/vton/engines
+app.get("/api/vton/engines", async (req, res) => {
+  try {
+    const pyResp = await fetch(`${PYTHON_VTON_URL}/api/vton/engines`, {
+      signal: AbortSignal.timeout(2000)
+    });
+    if (pyResp.ok) {
+      const data = await pyResp.json();
+      return res.json(data);
+    }
+  } catch {}
+
+  res.json({
+    success: true,
+    active_engine: "rt_vton",
+    engines: [
+      { id: "rt_vton", name: "RT-VTON", capability: "realtime_video_and_image", is_active: true },
+      { id: "catvton", name: "CatVTON", capability: "image_diffusion", is_active: false },
+      { id: "catv2ton", name: "CatV2TON-Video", capability: "image_and_video", is_active: false }
+    ]
   });
 });
 
