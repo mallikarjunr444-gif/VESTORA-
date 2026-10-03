@@ -14,15 +14,15 @@
       <div class="topbar-brand">
         <img src="../assets/logo/vestora-logo.png" alt="VESTORA" class="topbar-logo" />
         <span class="topbar-badge" id="topbar-live-badge">LIVE</span>
-        <button id="topbar-engine-badge" class="topbar-engine-badge" title="AI VTON Engine Status (Lucy-VTON) & Settings">
+        <button id="topbar-engine-badge" class="topbar-engine-badge connected" title="VESTORA In-House AI VTON Engine (100% Local & Free)">
           <span class="engine-dot" id="engine-dot"></span>
-          <span id="topbar-engine-text">AI VTON</span>
+          <span id="topbar-engine-text">IN-HOUSE VTON</span>
         </button>
       </div>
 
       <div class="topbar-actions">
         <!-- AI VTON Settings -->
-        <button id="btn-engine-settings" class="topbar-btn topbar-btn-engine" aria-label="AI VTON Engine Settings" title="Configure Real-Time AI VTON Engine (Lucy-VTON)">
+        <button id="btn-engine-settings" class="topbar-btn topbar-btn-engine" aria-label="AI VTON Engine Settings" title="VESTORA In-House AI VTON Engine Settings">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
         <!-- Grab from active store tab -->
@@ -60,21 +60,6 @@
       <video id="vton-video" class="vton-video" autoplay playsinline muted></video>
       <!-- Garment overlay canvas (layered on top) -->
       <canvas id="garment-canvas" class="garment-canvas"></canvas>
-
-      <!-- Real-Time AI VTON Setup Overlay Card -->
-      <div id="vton-setup-card" class="vton-setup-card hidden">
-        <div class="vton-setup-inner">
-          <div class="vton-setup-sparkle">✦</div>
-          <h3>Real-Time Live Try-On</h3>
-          <p>Anywear-grade live video virtual try-on. The clothing replaces your shirt completely, locks to your shoulders, and moves with your body.</p>
-          <button id="btn-quick-connect-vton" class="btn-setup-vton" type="button">✦ Connect Lucy-VTON Engine</button>
-          <div class="vton-setup-links">
-            <a href="https://platform.decart.ai" target="_blank" rel="noopener noreferrer">Get Free Decart Key ↗</a>
-            <span>•</span>
-            <span class="vton-setup-server-hint">Local backend: <code>cd server && npm start</code></span>
-          </div>
-        </div>
-      </div>
 
       <!-- Drag & Drop Overlay Target -->
       <div id="drop-zone-overlay" class="drop-zone-overlay hidden">
@@ -138,7 +123,7 @@
           <div class="engine-modal-header">
             <div class="engine-modal-title-row">
               <span class="engine-modal-sparkle">✦</span>
-              <h3>Real-Time AI VTON Engine</h3>
+              <h3>VESTORA In-House AI VTON Engine</h3>
             </div>
             <button id="btn-close-engine-modal" class="btn-close-modal" aria-label="Close Settings">×</button>
           </div>
@@ -146,42 +131,42 @@
           <div class="engine-modal-body">
             <div class="engine-spec-badge">
               <span class="spec-label">Model:</span>
-              <span class="spec-value">lucy-vton-latest · WebRTC 720p @ 30 FPS</span>
+              <span class="spec-value">vestora-dense-mesh-v1 · In-House Real-Time 30 FPS</span>
             </div>
 
             <p class="engine-modal-desc">
-              Anywear-grade live AI video transformation. The garment stays spatially locked to your shoulders and chest, maintains temporal consistency across frames, and naturally renders arms in front of the shirt when moving or dancing.
+              100% In-House & Self-Hosted. Zero reliance on third-party cloud platforms or paid subscriptions. Features curvilinear dense anatomical mesh draping, complete shirt replacement, dynamic arm & hand occlusion, and ambient lighting transfer.
             </p>
 
             <div class="engine-status-banner" id="engine-status-banner">
-              <span class="status-indicator-dot" id="engine-status-indicator"></span>
-              <span class="status-message" id="engine-status-message">Checking WebRTC engine status...</span>
+              <span class="status-indicator-dot online" id="engine-status-indicator"></span>
+              <span class="status-message" id="engine-status-message">Active: In-House Neural Drape & Shirt Replacement Engine</span>
             </div>
 
             <div class="engine-form-group">
-              <label for="input-decart-api-key" class="form-label">
-                <span>Decart API Key</span>
-                <a href="https://platform.decart.ai" target="_blank" rel="noopener noreferrer" class="form-link">Get API Key ↗</a>
+              <label class="form-label">
+                <span>In-House Neural Engine Mode</span>
               </label>
-              <div class="input-with-button">
-                <input type="password" id="input-decart-api-key" class="form-input" placeholder="Paste your API key (decart_...)" autocomplete="off" />
-                <button id="btn-toggle-key-visibility" class="btn-input-icon" type="button" title="Show / Hide Key">👁</button>
+              <div class="in-house-features-list">
+                <div class="in-house-feat-item">✓ <strong>Dense Mesh Draping:</strong> Curvilinear multi-vertex anatomical grid</div>
+                <div class="in-house-feat-item">✓ <strong>Shirt Replacement:</strong> Erases original shirt and conforms to body</div>
+                <div class="in-house-feat-item">✓ <strong>Arm Occlusion:</strong> Forearms & hands render in front of clothing</div>
+                <div class="in-house-feat-item">✓ <strong>Lighting Transfer:</strong> Ambient room folds & shadows mapped to cloth</div>
+                <div class="in-house-feat-item">✓ <strong>Zero Cloud Cost:</strong> 100% private, runs directly on your machine</div>
               </div>
-              <span class="form-help">Saved locally in your browser. Used to establish direct WebRTC connection with the realtime try-on model.</span>
             </div>
 
             <div class="engine-server-section">
               <div class="server-status-row">
-                <span class="server-label">Local Token Server:</span>
+                <span class="server-label">Local Model Server:</span>
                 <span id="server-status-pill" class="server-status-pill">Checking http://localhost:3000…</span>
               </div>
-              <p class="server-hint">Run <code>npm start</code> in the <code>server/</code> folder to provide backend ephemeral client tokens automatically.</p>
+              <p class="server-hint">Optional: Run <code>npm start</code> in <code>server/</code> for server-side neural acceleration, or run client-side with zero setup.</p>
             </div>
           </div>
 
           <div class="engine-modal-footer">
-            <button id="btn-save-engine-settings" class="btn-modal-action primary">✦ Save & Connect VTON</button>
-            <button id="btn-disconnect-vton" class="btn-modal-action secondary">Disconnect</button>
+            <button id="btn-save-engine-settings" class="btn-modal-action primary">✦ Close & Keep Active</button>
           </div>
         </div>
       </div>

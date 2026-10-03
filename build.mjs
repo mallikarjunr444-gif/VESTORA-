@@ -87,7 +87,7 @@ async function build() {
     platform: "browser",
   });
 
-  // 7. Bundle Try-On Controller with Real-Time Decart Lucy-VTON WebRTC Engine (ESM)
+  // 7. Bundle Try-On Controller with In-House Neural VTON Engine (ESM)
   const tryonBuild = esbuild.build({
     ...commonOptions,
     entryPoints: ["extension/tryon/tryon.js"],
@@ -96,7 +96,18 @@ async function build() {
     platform: "browser",
   });
 
-  await Promise.all([backgroundBuild, contentBuild, popupBuild, tryonBuild]);
+  // 8. Compile Engine modules for Node testing and runtime imports
+  const engineBuild = esbuild.build({
+    entryPoints: {
+      "rendering/in-house-vton": "engine/rendering/in-house-vton.ts",
+      "segmentation/index": "engine/segmentation/index.ts",
+    },
+    outdir: "dist/engine",
+    format: "esm",
+    target: ["node20"],
+  });
+
+  await Promise.all([backgroundBuild, contentBuild, popupBuild, tryonBuild, engineBuild]);
 
   // 7. Synchronize to root directory so loading the root repository in Chrome works seamlessly
   fs.copyFileSync("dist/manifest.json", "manifest.json");

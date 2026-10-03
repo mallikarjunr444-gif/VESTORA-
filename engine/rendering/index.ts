@@ -1,7 +1,10 @@
 /**
  * VESTORA Engine — Real-Time Renderer
  * Supports GPU-accelerated canvas rendering with WebGPU / Canvas 2D fallback (PRD Section 20).
+ * Features in-house dense anatomical mesh neural try-on engine (Zero 3rd-party API dependencies).
  */
+
+export * from "./in-house-vton.js";
 
 export interface RenderContext {
   canvas: HTMLCanvasElement;

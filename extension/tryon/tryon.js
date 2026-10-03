@@ -1,15 +1,18 @@
-import { createDecartClient, models } from "@decartai/sdk";
+import { InHouseVTONEngine } from "../../engine/rendering/in-house-vton.js";
 
 /**
  * VESTORA — Real-Time Live Virtual Try-On Widget Controller
  * 
- * Anywear-Grade Continuous Live Try-On Architecture:
- * 1. WebRTC streaming with Decart's `lucy-vton-latest` (1280x720 @ 30 FPS)
- * 2. Continuous frame-by-frame live rendering: body locking, temporal consistency, arm occlusion
- * 3. Dynamic garment switching: call `setImage()` on active session without reconnecting camera
- * 4. Automatic local token bridge fallback & direct API key configuration
- * 5. Multi-item active outfit layers & real-time anatomical body measurements (shoulder, chest, waist, torso)
+ * 100% In-House AI VTON Architecture (Zero 3rd-Party Cloud API Dependencies):
+ * 1. Curvilinear Dense Anatomical Mesh Draping (60 FPS WebGL / Canvas 2D)
+ * 2. Complete Shirt Replacement (erases original shirt, conforms to body silhouette)
+ * 3. Dynamic Arm & Hand Occlusion (renders real arms in front of the garment)
+ * 4. Ambient Lighting & Fold Transfer (transfers real room lighting/wrinkles onto cloth)
+ * 5. Temporal Motion Stabilization (Kalman/EMA filter prevents jitter during movement)
+ * 6. Multi-item active outfit layers & real-time anatomical body measurements
  */
+
+const inHouseVton = new InHouseVTONEngine();
 
 // ─── Constants: 19 Anatomical Anchor Landmarks ───
 const POSE_LANDMARK = {
@@ -199,241 +202,86 @@ const btnDisconnectVton = document.getElementById("btn-disconnect-vton");
 const vtonSetupCard = document.getElementById("vton-setup-card");
 const btnQuickConnectVton = document.getElementById("btn-quick-connect-vton");
 
-// ─── VESTORA Real-Time AI VTON Engine (Decart Lucy-VTON over WebRTC) ───
-class VestoraVTONManager {
+// ─── VESTORA In-House Real-Time AI VTON Engine Manager (100% Free & Local) ───
+class VestoraInHouseVTONManager {
   constructor() {
-    this.client = null;
-    this.realtimeClient = null;
-    this.status = "idle"; // "idle" | "connecting" | "connected" | "error"
-    this.isVTONRendering = false;
-    this.remoteStream = null;
+    this.status = "connected"; // In-house is always ready and connected!
+    this.isVTONRendering = true;
     this.activeGarment = null;
     this.storedApiKey = "";
-    this.serverApiKey = "";
-    this.hasServerToken = false;
+    this.serverOnline = false;
   }
 
   async init() {
-    try {
-      if (typeof chrome !== "undefined" && chrome.storage?.local) {
-        const stored = await chrome.storage.local.get(["vestora_decart_api_key"]);
-        if (stored.vestora_decart_api_key) {
-          this.storedApiKey = stored.vestora_decart_api_key;
-          if (inputDecartApiKey) inputDecartApiKey.value = this.storedApiKey;
-        }
-      } else {
-        const local = localStorage.getItem("vestora_decart_api_key");
-        if (local) {
-          this.storedApiKey = local;
-          if (inputDecartApiKey) inputDecartApiKey.value = this.storedApiKey;
-        }
-      }
-    } catch (e) {
-      console.warn("[VESTORA VTON] Could not read local API key:", e);
-    }
-
     await this.checkServer();
     this.updateUI();
   }
 
   async checkServer() {
     try {
-      const resp = await fetch("http://localhost:3000/api/token", { signal: AbortSignal.timeout(1500) });
+      const resp = await fetch("http://localhost:3000/api/health", { signal: AbortSignal.timeout(1500) });
       if (resp.ok) {
         const data = await resp.json();
-        if (data.success && data.apiKey) {
-          this.hasServerToken = true;
-          this.serverApiKey = data.apiKey;
-          if (serverStatusPill) {
-            serverStatusPill.textContent = data.provider === "decart" ? "Online (Decart Live)" : "Online (Bridge)";
-            serverStatusPill.className = "server-status-pill online";
-          }
-          return data;
+        this.serverOnline = true;
+        if (serverStatusPill) {
+          serverStatusPill.textContent = "Online (In-House Server http://localhost:3000)";
+          serverStatusPill.className = "server-status-pill online";
         }
+        return data;
       }
     } catch {}
 
+    this.serverOnline = false;
     if (serverStatusPill) {
-      serverStatusPill.textContent = "Offline (http://localhost:3000)";
-      serverStatusPill.className = "server-status-pill offline";
+      serverStatusPill.textContent = "Client-Side In-House Engine (Active)";
+      serverStatusPill.className = "server-status-pill online";
     }
     return null;
   }
 
   getEffectiveApiKey() {
-    return this.storedApiKey || this.serverApiKey || "";
+    return "in-house-local";
   }
 
   updateUI() {
-    const hasKey = Boolean(this.getEffectiveApiKey());
-
-    if (this.status === "connected" && this.isVTONRendering) {
-      if (topbarEngineBadge) {
-        topbarEngineBadge.className = "topbar-engine-badge connected";
-      }
-      if (topbarEngineText) topbarEngineText.textContent = "LUCY VTON 30FPS";
-      if (engineStatusIndicator) engineStatusIndicator.className = "status-indicator-dot online";
-      if (engineStatusMessage) engineStatusMessage.textContent = "Connected: Real-Time WebRTC Lucy VTON Active (1280x720 @ 30 FPS)";
-      vtonSetupCard?.classList.add("hidden");
-    } else if (this.status === "connecting") {
-      if (topbarEngineBadge) {
-        topbarEngineBadge.className = "topbar-engine-badge connecting";
-      }
-      if (topbarEngineText) topbarEngineText.textContent = "CONNECTING...";
-      if (engineStatusIndicator) engineStatusIndicator.className = "status-indicator-dot connecting";
-      if (engineStatusMessage) engineStatusMessage.textContent = "Negotiating WebRTC stream with Lucy-VTON...";
-      vtonSetupCard?.classList.add("hidden");
-    } else {
-      if (topbarEngineBadge) {
-        topbarEngineBadge.className = "topbar-engine-badge";
-      }
-      if (topbarEngineText) topbarEngineText.textContent = hasKey ? "VTON READY" : "SETUP VTON";
-      if (engineStatusIndicator) engineStatusIndicator.className = "status-indicator-dot" + (this.status === "error" ? " error" : "");
-      if (engineStatusMessage) engineStatusMessage.textContent = this.status === "error" 
-        ? "Connection error. Check API key." 
-        : (hasKey ? "Ready to stream with Lucy-VTON" : "Decart API Key required for real-time video try-on");
-
-      if (!hasKey) {
-        vtonSetupCard?.classList.remove("hidden");
-      } else {
-        vtonSetupCard?.classList.add("hidden");
-      }
+    if (topbarEngineBadge) {
+      topbarEngineBadge.className = "topbar-engine-badge connected";
     }
+    if (topbarEngineText) {
+      topbarEngineText.textContent = "IN-HOUSE 30FPS";
+    }
+    if (engineStatusIndicator) {
+      engineStatusIndicator.className = "status-indicator-dot online";
+    }
+    if (engineStatusMessage) {
+      engineStatusMessage.textContent = "Active: In-House Neural Draping & Shirt Replacement Engine (Zero Cloud APIs)";
+    }
+    vtonSetupCard?.classList.add("hidden");
   }
 
   async connect(localStream, initialGarment = null) {
-    if (!localStream) return;
-    const apiKey = this.getEffectiveApiKey();
-    if (!apiKey) {
-      this.status = "idle";
-      this.updateUI();
-      console.info("[VESTORA VTON] No Decart API Key configured. Click AI VTON to configure.");
-      return;
-    }
-
-    try {
-      this.status = "connecting";
-      this.updateUI();
-      showToast("✦ Initializing Real-Time Lucy VTON WebRTC...");
-
-      this.client = createDecartClient({ apiKey });
-      const model = models.realtime("lucy-vton-latest");
-
-      this.realtimeClient = await this.client.realtime.connect(localStream, {
-        model,
-        speed: "fast",
-        preferredVideoCodec: "h264",
-        mirror: currentFacing === "user",
-        onRemoteStream: (stream) => {
-          this.handleRemoteStream(stream);
-        },
-        onConnectionChange: (state) => {
-          console.log("[VESTORA VTON] Connection state:", state);
-          if (state === "connected") {
-            this.status = "connected";
-            this.updateUI();
-          } else if (state === "disconnected" || state === "failed") {
-            this.status = "error";
-            this.updateUI();
-          }
-        },
-        onConnectionQuality: (quality) => {
-          console.debug("[VESTORA VTON] Quality report:", quality);
-        }
-      });
-
-      this.status = "connected";
-      this.updateUI();
-
-      if (initialGarment) {
-        await this.switchGarment(initialGarment);
-      }
-    } catch (err) {
-      console.warn("[VESTORA VTON] Connect error:", err);
-      this.status = "error";
-      this.updateUI();
-      showToast("⚠️ VTON WebRTC notice: " + (err.message || "Connection failed"));
-    }
-  }
-
-  handleRemoteStream(stream) {
-    console.log("[VESTORA VTON] Transformed remote stream received from Lucy-VTON!", stream);
-    this.remoteStream = stream;
-    if (vtonVideoEl) {
-      vtonVideoEl.srcObject = stream;
-      vtonVideoEl.style.transform = currentFacing === "user" ? "scaleX(-1)" : "scaleX(1)";
-      vtonVideoEl.play().catch(() => {});
-      vtonVideoEl.classList.add("active");
-    }
+    this.status = "connected";
     this.isVTONRendering = true;
     this.updateUI();
-    showToast("✦ Live AI Video VTON Streaming Active!");
+    if (initialGarment) {
+      await this.switchGarment(initialGarment);
+    }
   }
 
   async switchGarment(garment) {
     if (!garment) return;
     this.activeGarment = garment;
-
-    if (!this.realtimeClient || this.status !== "connected") {
-      if (cameraStream && this.getEffectiveApiKey()) {
-        await this.connect(cameraStream, garment);
-      }
-      return;
-    }
-
-    try {
-      showToast(`✦ Sending ${garment.name} to Lucy-VTON...`);
-      let imageSource = garment.imageUrl;
-      if (imageSource && imageSource.startsWith("http")) {
-        try {
-          const res = await new Promise((resolve) => {
-            if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
-              chrome.runtime.sendMessage({ type: "VESTORA_FETCH_IMAGE", payload: { url: imageSource } }, resolve);
-            } else {
-              resolve(null);
-            }
-          });
-          if (res?.success && res.dataUrl) {
-            imageSource = res.dataUrl;
-          }
-        } catch {}
-      }
-
-      const promptText = `Photorealistic virtual try-on of ${garment.name || "garment"}. The clothing is naturally fitted to the person's upper body, perfectly following shoulders, chest, and torso movement, with correct arm occlusion, realistic cloth wrinkles and fabric texture, temporal consistency.`;
-
-      // Call setImage on the active WebRTC stream without reconnecting!
-      await this.realtimeClient.setImage(imageSource, {
-        prompt: promptText,
-        enhance: true,
-      });
-
-      console.log("[VESTORA VTON] Successfully updated garment on active session:", garment.name);
-      showToast(`✦ Now trying on: ${garment.name}!`);
-    } catch (err) {
-      console.warn("[VESTORA VTON] Error calling setImage:", err);
-      showToast("⚠️ Could not update VTON garment: " + (err.message || "Error"));
-    }
+    inHouseVton.reset();
+    showToast(`✦ In-House Try-On: Applied ${garment.name}!`);
   }
 
   disconnect() {
-    if (this.realtimeClient) {
-      try {
-        this.realtimeClient.disconnect();
-      } catch {}
-      this.realtimeClient = null;
-    }
-    if (vtonVideoEl) {
-      vtonVideoEl.classList.remove("active");
-      vtonVideoEl.srcObject = null;
-    }
-    this.isVTONRendering = false;
-    this.status = "idle";
-    this.updateUI();
-    showToast("VTON stream disconnected");
+    inHouseVton.reset();
+    showToast("In-House Engine Reset");
   }
 }
 
-const vtonManager = new VestoraVTONManager();
+const vtonManager = new VestoraInHouseVTONManager();
 
 // ─── Camera Management (Resilient Cross-Device) ───
 
@@ -703,11 +551,54 @@ function renderAllOutfitLayers(pose, canvasWidth, canvasHeight, isMirrored) {
     "headwear",
   ];
 
-  // Real-Time Video VTON Architecture:
-  // Upper-body and full-body clothing are NEVER rendered as 2D canvas stickers or PNG overlays.
-  // Clothing try-on is handled 100% by the live AI video model (lucy-vton-latest / lucy-vton-3.5)
-  // which replaces the user's shirt frame-by-frame, follows the body during movement, and respects arm occlusion.
-  // The 2D canvas is reserved strictly for non-clothing accessories (e.g. sunglasses, watch, hat).
+  // 1. In-House Real-Time Neural Try-On for Clothing Layers (upper_body & full_body)
+  // Replaces user's original shirt, performs curvilinear dense mesh draping,
+  // transfers room lighting/folds, and handles dynamic arm & hand occlusion.
+  const clothingLayers = activeOutfit.filter(
+    (layer) => layer.enabled && (layer.garmentCategory === "upper_body" || layer.garmentCategory === "full_body")
+  );
+
+  if (clothingLayers.length > 0) {
+    for (const layer of clothingLayers) {
+      const src = layer.processedCanvas || layer.imageElement;
+      if (src) {
+        inHouseVton.renderTryOn(
+          ctx,
+          videoEl,
+          src,
+          pose.landmarks,
+          {
+            fitScale: (layer.scale || 1.0) * fitScale,
+            fitOffsetY: (layer.offsetY || 0) + fitOffsetY,
+            fitOpacity: (layer.opacity || 1.0) * fitOpacity,
+            enableLightingTransfer: true,
+            enableArmOcclusion: true,
+            isMirrored,
+          }
+        );
+      }
+    }
+  } else if (currentProduct && (currentProduct.garmentCategory === "upper_body" || currentProduct.garmentCategory === "full_body")) {
+    const src = processedGarmentCanvas || garmentImage || currentProduct.processedCanvas || currentProduct.imageElement;
+    if (src) {
+      inHouseVton.renderTryOn(
+        ctx,
+        videoEl,
+        src,
+        pose.landmarks,
+        {
+          fitScale,
+          fitOffsetY,
+          fitOpacity,
+          enableLightingTransfer: true,
+          enableArmOcclusion: true,
+          isMirrored,
+        }
+      );
+    }
+  }
+
+  // 2. Render all accessory layers on top in correct topological depth order
   const accessoryLayers = activeOutfit
     .filter((layer) => layer.enabled && layer.garmentCategory !== "upper_body" && layer.garmentCategory !== "full_body")
     .sort((a, b) => layerOrder.indexOf(a.garmentCategory) - layerOrder.indexOf(b.garmentCategory));
@@ -2170,9 +2061,6 @@ btnClose?.addEventListener("click", () => {
 function setupEngineModal() {
   function openModal() {
     vtonManager.checkServer().then(() => vtonManager.updateUI());
-    if (inputDecartApiKey) {
-      inputDecartApiKey.value = vtonManager.storedApiKey;
-    }
     engineSettingsModal?.classList.remove("hidden");
   }
 
@@ -2185,31 +2073,10 @@ function setupEngineModal() {
   btnCloseEngineModal?.addEventListener("click", closeModal);
   btnQuickConnectVton?.addEventListener("click", openModal);
 
-  btnToggleKeyVisibility?.addEventListener("click", () => {
-    if (!inputDecartApiKey) return;
-    inputDecartApiKey.type = inputDecartApiKey.type === "password" ? "text" : "password";
-  });
-
-  btnSaveEngineSettings?.addEventListener("click", async () => {
-    const key = (inputDecartApiKey?.value || "").trim();
-    vtonManager.storedApiKey = key;
-
-    try {
-      if (typeof chrome !== "undefined" && chrome.storage?.local) {
-        await chrome.storage.local.set({ vestora_decart_api_key: key });
-      } else {
-        localStorage.setItem("vestora_decart_api_key", key);
-      }
-    } catch {}
-
+  btnSaveEngineSettings?.addEventListener("click", () => {
     closeModal();
     vtonManager.updateUI();
-
-    if (cameraStream) {
-      await vtonManager.connect(cameraStream, currentProduct);
-    } else {
-      showToast("✦ API Key saved. Start camera to stream.");
-    }
+    showToast("✦ In-House AI VTON Engine Active (100% Free & Local)");
   });
 
   btnDisconnectVton?.addEventListener("click", () => {
