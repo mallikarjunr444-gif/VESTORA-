@@ -239,6 +239,21 @@ class VestoraInHouseVTONManager {
     return null;
   }
 
+  // Fetch active engine status from the VTON backend
+  async fetchEngineStatus() {
+    try {
+      const resp = await fetch("http://localhost:3000/api/vton/status", { signal: AbortSignal.timeout(1500) });
+      if (resp.ok) {
+        const data = await resp.json();
+        this.activeEngine = data.active_engine || "rt_vton";
+        this.device = data.device || "cpu";
+      }
+    } catch {
+      this.activeEngine = "rt_vton";
+      this.device = "cpu";
+    }
+  }
+
   getEffectiveApiKey() {
     return "in-house-local";
   }
@@ -263,6 +278,8 @@ class VestoraInHouseVTONManager {
     this.status = "connected";
     this.isVTONRendering = true;
     this.updateUI();
+    // Pull latest engine status after connection
+    await this.fetchEngineStatus();
     if (initialGarment) {
       await this.switchGarment(initialGarment);
     }
@@ -594,10 +611,31 @@ function startRenderLoop() {
     // Update body measurements from pose
     updateMeasurements(smoothedPose, videoEl.videoWidth, videoEl.videoHeight);
 
-    // Clear canvas and render all active outfit items (clothing + accessories)
+    // Clear canvas for fresh frame
     ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
     const isMirrored = currentFacing === "user" && currentInputMode === "camera";
-    renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
+
+    // Determine if RT-VTON engine is active and server is reachable
+    if (this.activeEngine && this.activeEngine === "rt_vton" && this.serverOnline) {
+      // Use backend RT-VTON for real-time try‑on
+      const garmentItem = currentProduct || { garmentCategory: "upper_body", imageUrl: garmentImage?.src || null };
+      vtonManager.renderVtonFrame(videoEl, garmentItem).then(res => {
+        if (res && res.frame_image_b64) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvasEl.width, canvasEl.height);
+          };
+          img.src = res.frame_image_b64;
+        }
+      }).catch(e => {
+        console.warn("[VESTORA] RT-VTON frame render error:", e);
+        // Fallback to in‑house rendering on error
+        renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
+      });
+    } else {
+      // Fallback: in‑house rendering (existing logic)
+      renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
+    }
   }
 
   animationFrameId = requestAnimationFrame(frame);
