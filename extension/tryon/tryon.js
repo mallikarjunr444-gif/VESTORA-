@@ -652,7 +652,7 @@ if (vtonManager.activeEngine && vtonManager.activeEngine === "rt_vton" && vtonMa
 } else {
   // No RT‑VTON backend – use the existing in‑house pipeline.
   renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
-}        renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
+    }
       });
     } else {
       // Fallback: in‑house rendering (existing logic)
