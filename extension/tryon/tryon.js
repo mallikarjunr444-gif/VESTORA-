@@ -695,7 +695,13 @@ function renderAllOutfitLayers(pose, canvasWidth, canvasHeight, isMirrored) {
     .filter((layer) => layer.enabled)
     .sort((a, b) => layerOrder.indexOf(a.garmentCategory) - layerOrder.indexOf(b.garmentCategory));
 
+  // When Real-Time AI VTON video stream is rendering, the garment is already realistically rendered by the video model
+  // (body-locked, arm-occluded, temporally consistent at 30 FPS).
+  // So we skip drawing flat upper body PNGs onto the canvas overlay!
+  const isVTONActive = vtonManager.isVTONRendering;
+
   if (activeLayers.length === 0 && (processedGarmentCanvas || garmentImage)) {
+    if (isVTONActive) return; // Live AI VTON stream handles clothing
     // Fallback for single loaded item
     renderUpperBodyGarment(pose, canvasWidth, canvasHeight, {
       source: processedGarmentCanvas || garmentImage,
@@ -736,11 +742,15 @@ function renderAllOutfitLayers(pose, canvasWidth, canvasHeight, isMirrored) {
         renderLowerBodyGarment(pose, canvasWidth, canvasHeight, layer, isMirrored);
         break;
       case "full_body":
-        renderFullBodyGarment(pose, canvasWidth, canvasHeight, layer, isMirrored);
+        if (!isVTONActive) {
+          renderFullBodyGarment(pose, canvasWidth, canvasHeight, layer, isMirrored);
+        }
         break;
       case "upper_body":
       default:
-        renderUpperBodyGarment(pose, canvasWidth, canvasHeight, layer, isMirrored);
+        if (!isVTONActive) {
+          renderUpperBodyGarment(pose, canvasWidth, canvasHeight, layer, isMirrored);
+        }
         break;
     }
   }
