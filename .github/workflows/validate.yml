@@ -1,0 +1,50 @@
+name: 🔍 VESTORA — PR Validation
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Validate Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Validate manifest.json
+        run: |
+          node -e "
+            const fs = require('fs');
+            const manifest = JSON.parse(fs.readFileSync('dist/manifest.json', 'utf-8'));
+            console.log('✅ Manifest version:', manifest.manifest_version);
+            console.log('✅ Extension name:', manifest.name);
+            console.log('✅ Extension version:', manifest.version);
+            if (manifest.manifest_version !== 3) throw new Error('Must be MV3');
+            console.log('✅ All checks passed!');
+          "
+
+      - name: Check bundle sizes
+        run: |
+          echo "Content bundle: $(wc -c < dist/content/content.js) bytes"
+          echo "Background bundle: $(wc -c < dist/background/service-worker.js) bytes"
+          # Warn if content script > 500KB
+          size=$(wc -c < dist/content/content.js)
+          if [ $size -gt 512000 ]; then
+            echo "⚠️ Content script is large: ${size} bytes"
+          else
+            echo "✅ Content script size OK: ${size} bytes"
+          fi

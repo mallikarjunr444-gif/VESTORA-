@@ -1,11 +1,14 @@
 # Dependencies
 node_modules/
 
-# Build output (can be regenerated with `npm run build`)
+# Build output — dist/ is generated; NOT tracked in git
+# GitHub Actions will build it fresh on every push
 dist/
 
 # Environment secrets
 .env
+.env.local
+.env.*.local
 
 # OS files
 .DS_Store
@@ -17,3 +20,11 @@ Thumbs.db
 
 # Logs
 *.log
+npm-debug.log*
+
+# Test outputs
+coverage/
+
+# Temporary files
+*.tmp
+*.temp

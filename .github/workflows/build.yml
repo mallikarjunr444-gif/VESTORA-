@@ -1,0 +1,96 @@
+name: 🔧 VESTORA — Build & Release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:     # Allow manual trigger from GitHub UI
+
+permissions:
+  contents: write        # Needed to create GitHub Releases
+
+jobs:
+  build:
+    name: Build Extension
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ─────────────────────────────────────────────────────
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # ── 2. Node.js setup ────────────────────────────────────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # ── 3. Install dependencies ──────────────────────────────────────────
+      - name: Install dependencies
+        run: npm ci
+
+      # ── 4. Build extension ───────────────────────────────────────────────
+      - name: Build VESTORA Extension
+        run: npm run build
+
+      # ── 5. Verify build output ───────────────────────────────────────────
+      - name: Verify build artifacts
+        run: |
+          echo "=== dist/ contents ==="
+          ls -la dist/
+          echo "=== dist/content/ ==="
+          ls -la dist/content/
+          echo "=== manifest.json ==="
+          cat dist/manifest.json
+
+      # ── 6. Package as ZIP for distribution ──────────────────────────────
+      - name: Package extension ZIP
+        run: |
+          cd dist
+          zip -r ../vestora-extension.zip . -x "*.map"
+          echo "ZIP size: $(du -sh ../vestora-extension.zip | cut -f1)"
+
+      # ── 7. Upload build artifact (available on every push) ───────────────
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vestora-extension-${{ github.sha }}
+          path: vestora-extension.zip
+          retention-days: 30
+
+      # ── 8. Create GitHub Release on main branch push ────────────────────
+      - name: Create Release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "VESTORA v1.0 — Build #${{ github.run_number }}"
+          body: |
+            ## 🚀 VESTORA Auto-Build #${{ github.run_number }}
+
+            **Commit:** `${{ github.sha }}`
+            **Branch:** `${{ github.ref_name }}`
+            **Built at:** ${{ github.event.head_commit.timestamp }}
+
+            ### What's in this release:
+            - Shadow DOM live try-on panel (camera works on ALL sites)
+            - AI size recommendation engine
+            - Multi-item outfit layering
+            - Universal product detection (any fashion website)
+
+            ### 🔧 How to install (Developer Mode):
+            1. Download `vestora-extension.zip`
+            2. Unzip it
+            3. Open `chrome://extensions` → Enable **Developer mode**
+            4. Click **Load unpacked** → select the unzipped folder
+            5. Go to any fashion site and click the **✦ VESTORA** tab on the left!
+
+            ---
+            *VESTORA · Wear What You Imagine · FREE · NO QUEUE*
+          files: vestora-extension.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
