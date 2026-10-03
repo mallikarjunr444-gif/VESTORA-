@@ -41,11 +41,10 @@ async function build() {
   fs.copyFileSync("extension/popup/popup.css", "dist/popup/popup.css");
   fs.copyFileSync("extension/styles/overlay.css", "dist/styles/overlay.css");
 
-  // Copy try-on widget files
+  // Copy try-on widget static files (html, css, permission helper)
   fs.mkdirSync("dist/tryon", { recursive: true });
   fs.copyFileSync("extension/tryon/tryon.html", "dist/tryon/tryon.html");
   fs.copyFileSync("extension/tryon/tryon.css", "dist/tryon/tryon.css");
-  fs.copyFileSync("extension/tryon/tryon.js", "dist/tryon/tryon.js");
   fs.copyFileSync("extension/tryon/permission.html", "dist/tryon/permission.html");
 
   await copyDir("extension/assets", "dist/assets");
@@ -88,7 +87,16 @@ async function build() {
     platform: "browser",
   });
 
-  await Promise.all([backgroundBuild, contentBuild, popupBuild]);
+  // 7. Bundle Try-On Controller with Real-Time Decart Lucy-VTON WebRTC Engine (ESM)
+  const tryonBuild = esbuild.build({
+    ...commonOptions,
+    entryPoints: ["extension/tryon/tryon.js"],
+    outfile: "dist/tryon/tryon.js",
+    format: "esm",
+    platform: "browser",
+  });
+
+  await Promise.all([backgroundBuild, contentBuild, popupBuild, tryonBuild]);
 
   // 7. Synchronize to root directory so loading the root repository in Chrome works seamlessly
   fs.copyFileSync("dist/manifest.json", "manifest.json");

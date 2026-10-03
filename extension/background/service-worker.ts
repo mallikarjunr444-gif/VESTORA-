@@ -220,13 +220,41 @@ if (chrome.contextMenus) {
   });
 }
 
-function openTryOnWindow(product?: Product): void {
+async function openTryOnWindow(product?: Product): Promise<void> {
   if (product) {
-    chrome.storage.local.set({
+    await chrome.storage.local.set({
       [STORAGE_KEYS.ACTIVE_PRODUCT]: product,
       vestora_pending_product: product,
     });
   }
+
+  // Check if try-on window or tab is already open
+  try {
+    const tabs = await chrome.tabs.query({});
+    const tryonTab = tabs.find((t) => t.url && t.url.includes("tryon/tryon.html"));
+
+    if (tryonTab && tryonTab.id && tryonTab.windowId) {
+      // Bring existing tryon window to front
+      await chrome.windows.update(tryonTab.windowId, { focused: true });
+      await chrome.tabs.update(tryonTab.id, { active: true });
+
+      if (product) {
+        // Send garment to active session without reconnecting WebRTC/camera
+        chrome.tabs.sendMessage(tryonTab.id, {
+          type: "VESTORA_SWITCH_GARMENT",
+          product,
+        }).catch(() => {});
+        chrome.runtime.sendMessage({
+          type: "VESTORA_SWITCH_GARMENT",
+          product,
+        }).catch(() => {});
+      }
+      return;
+    }
+  } catch (err) {
+    logger.warn("Could not query existing tabs:", err);
+  }
+
   const productParam = product ? `?product=${encodeURIComponent(JSON.stringify(product))}` : "";
   chrome.windows.create({
     url: chrome.runtime.getURL(`tryon/tryon.html${productParam}`),
