@@ -275,6 +275,90 @@ class VestoraInHouseVTONManager {
     showToast(`✦ In-House Try-On: Applied ${garment.name}!`);
   }
 
+  async classifyGarment(product) {
+    if (!product) return null;
+    try {
+      const resp = await fetch("http://localhost:3000/api/classify-garment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: product.name || "",
+          category: product.category || "",
+          image_url: product.imageUrl || "",
+        }),
+        signal: AbortSignal.timeout(2000),
+      });
+      if (resp.ok) {
+        return await resp.json();
+      }
+    } catch {}
+    return null;
+  }
+
+  async extractGarment(imageElement, category, name) {
+    if (!imageElement) return null;
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = imageElement.naturalWidth || imageElement.width;
+      canvas.height = imageElement.naturalHeight || imageElement.height;
+      const cctx = canvas.getContext("2d");
+      cctx.drawImage(imageElement, 0, 0);
+      const dataUrl = canvas.toDataURL("image/png");
+
+      const resp = await fetch("http://localhost:3000/api/extract-garment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image: dataUrl,
+          category: category || "upper_body",
+          name: name || "",
+        }),
+        signal: AbortSignal.timeout(4000),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        return data.extracted_garment || null;
+      }
+    } catch {}
+    return null;
+  }
+
+  async renderNeuralSnapshot(videoElement, garmentItem) {
+    if (!videoElement || !garmentItem) return null;
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = videoElement.videoWidth || 640;
+      canvas.height = videoElement.videoHeight || 480;
+      const cctx = canvas.getContext("2d");
+      cctx.drawImage(videoElement, 0, 0);
+      const personData = canvas.toDataURL("image/png");
+
+      const garmentSrc = garmentItem.processedCanvas || garmentItem.imageElement;
+      let garmentData = garmentItem.imageUrl;
+      if (garmentSrc && garmentSrc.toDataURL) {
+        garmentData = garmentSrc.toDataURL("image/png");
+      }
+
+      const resp = await fetch("http://localhost:3000/api/tryon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          person_image: personData,
+          garment_image: garmentData,
+          category: garmentItem.garmentCategory || "upper_body",
+          garment_name: garmentItem.name || "",
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (resp.ok) {
+        return await resp.json();
+      }
+    } catch (err) {
+      console.warn("Neural VTON snapshot error:", err);
+    }
+    return null;
+  }
+
   disconnect() {
     inHouseVton.reset();
     showToast("In-House Engine Reset");
@@ -535,8 +619,9 @@ function smoothPose(history) {
 function renderAllOutfitLayers(pose, canvasWidth, canvasHeight, isMirrored) {
   if (!pose) return;
 
-  // Topological depth order: lower body -> full body -> upper body -> belt -> necklace -> scarf -> bag -> wristwear -> ring -> earrings -> eyewear -> headwear
+  // Topological depth order: shoes -> lower body -> full body -> upper body -> belt -> necklace -> scarf -> bag -> wristwear -> ring -> gloves -> earrings -> eyewear -> headwear
   const layerOrder = [
+    "shoes",
     "lower_body",
     "full_body",
     "upper_body",
@@ -546,6 +631,7 @@ function renderAllOutfitLayers(pose, canvasWidth, canvasHeight, isMirrored) {
     "bag",
     "wristwear",
     "ring",
+    "gloves",
     "earrings",
     "eyewear",
     "headwear",
@@ -623,11 +709,20 @@ function renderAllOutfitLayers(pose, canvasWidth, canvasHeight, isMirrored) {
       case "wristwear":
         renderWristwear(pose, canvasWidth, canvasHeight, layer, isMirrored);
         break;
+      case "ring":
+        renderRing(pose, canvasWidth, canvasHeight, layer, isMirrored);
+        break;
+      case "gloves":
+        renderGloves(pose, canvasWidth, canvasHeight, layer, isMirrored);
+        break;
       case "bag":
         renderBag(pose, canvasWidth, canvasHeight, layer, isMirrored);
         break;
       case "belt":
         renderBelt(pose, canvasWidth, canvasHeight, layer, isMirrored);
+        break;
+      case "shoes":
+        renderShoes(pose, canvasWidth, canvasHeight, layer, isMirrored);
         break;
       case "lower_body":
         renderLowerBodyGarment(pose, canvasWidth, canvasHeight, layer, isMirrored);
@@ -984,6 +1079,76 @@ function renderFullBodyGarment(pose, canvasWidth, canvasHeight, item, isMirrored
 
   const src = item.processedCanvas || item.imageElement;
   if (src) ctx.drawImage(src, drawX, topY, garmentWidth, garmentHeight);
+  ctx.restore();
+}
+
+// ── 11. Live Footwear (Shoes / Sneakers / Boots) ──
+function renderShoes(pose, canvasWidth, canvasHeight, item, isMirrored) {
+  const lAnkle = pose.landmarks[POSE_LANDMARK.LEFT_ANKLE];
+  const rAnkle = pose.landmarks[POSE_LANDMARK.RIGHT_ANKLE];
+  if (!lAnkle || !rAnkle) return;
+
+  const scale = item.scale || 1.0;
+  const offsetY = item.offsetY || 0;
+  const opacity = item.opacity !== undefined ? item.opacity : fitOpacity;
+  const size = Math.abs(rAnkle.x - lAnkle.x) * 0.9 * scale;
+  const shoeHeight = size * 0.55;
+
+  const src = item.processedCanvas || item.imageElement;
+  if (!src) return;
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  [lAnkle, rAnkle].forEach((ankle) => {
+    const drawX = isMirrored ? canvasWidth - ankle.x - size / 2 : ankle.x - size / 2;
+    const drawY = ankle.y - shoeHeight * 0.2 + offsetY;
+    ctx.drawImage(src, drawX, drawY, size, shoeHeight);
+  });
+  ctx.restore();
+}
+
+// ── 12. Live Gloves (Hands / Fingers) ──
+function renderGloves(pose, canvasWidth, canvasHeight, item, isMirrored) {
+  const lWrist = pose.landmarks[POSE_LANDMARK.LEFT_WRIST];
+  const rWrist = pose.landmarks[POSE_LANDMARK.RIGHT_WRIST];
+  if (!lWrist || !rWrist) return;
+
+  const scale = item.scale || 1.0;
+  const offsetY = item.offsetY || 0;
+  const opacity = item.opacity !== undefined ? item.opacity : fitOpacity;
+  const size = canvasWidth * 0.11 * scale;
+
+  const src = item.processedCanvas || item.imageElement;
+  if (!src) return;
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  [lWrist, rWrist].forEach((wrist) => {
+    const drawX = isMirrored ? canvasWidth - wrist.x - size / 2 : wrist.x - size / 2;
+    const drawY = wrist.y - size * 0.2 + offsetY;
+    ctx.drawImage(src, drawX, drawY, size, size);
+  });
+  ctx.restore();
+}
+
+// ── 13. Live Ring (Individual Fingers) ──
+function renderRing(pose, canvasWidth, canvasHeight, item, isMirrored) {
+  const lWrist = pose.landmarks[POSE_LANDMARK.LEFT_WRIST];
+  if (!lWrist) return;
+
+  const scale = item.scale || 1.0;
+  const offsetY = item.offsetY || 0;
+  const opacity = item.opacity !== undefined ? item.opacity : fitOpacity;
+  const size = canvasWidth * 0.055 * scale;
+
+  const src = item.processedCanvas || item.imageElement;
+  if (!src) return;
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  const drawX = isMirrored ? canvasWidth - lWrist.x - size / 2 : lWrist.x - size / 2;
+  const drawY = lWrist.y + size * 0.8 + offsetY;
+  ctx.drawImage(src, drawX, drawY, size, size);
   ctx.restore();
 }
 
@@ -1373,6 +1538,18 @@ function updateSizePills(recommended) {
 function mapToGarmentCategory(name = "", category = "") {
   const text = `${name} ${category}`.toLowerCase();
 
+  // Footwear & Shoes
+  if (/\b(shoe|shoes|sneaker|sneakers|boot|boots|sandal|sandals|heel|heels|loafer|loafers|footwear|slippers|slides)\b/i.test(text)) {
+    return "shoes";
+  }
+  // Gloves & Handwear
+  if (/\b(glove|gloves|mitten|mittens|gauntlet|handwear)\b/i.test(text)) {
+    return "gloves";
+  }
+  // Rings
+  if (/\b(ring|rings|band|wedding ring|engagement ring|finger ring)\b/i.test(text)) {
+    return "ring";
+  }
   // Eyewear (Sunglasses / Glasses / Frames)
   if (/\b(sunglass|sunglasses|glasses|spectacle|spectacles|shades|goggle|goggles|frames|eyewear|aviator|wayfarer|clubmaster)\b/i.test(text)) {
     return "eyewear";
@@ -1415,11 +1592,14 @@ function mapToGarmentCategory(name = "", category = "") {
 
 function formatGarmentCategoryTitle(cat) {
   switch (cat) {
+    case "shoes": return "Shoes";
+    case "gloves": return "Gloves";
+    case "ring": return "Ring";
     case "eyewear": return "Sunglasses";
     case "headwear": return "Headwear";
     case "necklace": return "Necklace";
     case "earrings": return "Earrings";
-    case "wristwear": return "Watch";
+    case "wristwear": return "Watch / Bracelet";
     case "bag": return "Bag";
     case "belt": return "Belt";
     case "lower_body": return "Bottoms";
@@ -1515,6 +1695,21 @@ function loadDirectImage(item) {
 
     // Automatically send new garment to the active Real-Time VTON session (no camera reconnect!)
     vtonManager.switchGarment(item);
+
+    // Asynchronously refine cutout using VTON backend AI extractor if available
+    vtonManager.extractGarment(img, item.garmentCategory, item.name).then((extractedDataUrl) => {
+      if (extractedDataUrl) {
+        const aiImg = new Image();
+        aiImg.onload = () => {
+          item.processedCanvas = aiImg;
+          if (currentProduct?.id === item.id) {
+            processedGarmentCanvas = aiImg;
+          }
+          renderOutfitLayersList();
+        };
+        aiImg.src = extractedDataUrl;
+      }
+    });
   };
 
   img.onerror = () => {
@@ -1547,6 +1742,21 @@ function loadItemViaBgFetch(item) {
 
             // Automatically send new garment to the active Real-Time VTON session (no camera reconnect!)
             vtonManager.switchGarment(item);
+
+            // Asynchronously refine cutout using VTON backend AI extractor if available
+            vtonManager.extractGarment(img, item.garmentCategory, item.name).then((extractedDataUrl) => {
+              if (extractedDataUrl) {
+                const aiImg = new Image();
+                aiImg.onload = () => {
+                  item.processedCanvas = aiImg;
+                  if (currentProduct?.id === item.id) {
+                    processedGarmentCanvas = aiImg;
+                  }
+                  renderOutfitLayersList();
+                };
+                aiImg.src = extractedDataUrl;
+              }
+            });
           };
           img.src = response.dataUrl;
         } else {
