@@ -664,13 +664,8 @@ if (RT_VTON_SUPPORTED.includes(garmentItem.garmentCategory)) {
 } else {
   // No RT‑VTON backend – use the existing in‑house pipeline.
   renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
-    }
-      });
-    } else {
-      // Fallback: in‑house rendering (existing logic)
-      renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
-    }
-  }
+
+
 
   animationFrameId = requestAnimationFrame(frame);
 }
@@ -2498,3 +2493,5 @@ if (productParam) {
   // No URL param → try chrome.storage (side panel flow)
   autoLoadProductFromStorage();
 }
+void 0;
+
