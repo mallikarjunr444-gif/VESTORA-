@@ -760,9 +760,27 @@ function buildPanelHTML(): string {
   `;
 }
 
-// ── Public API ─────────────────────────────────────────────────────────────
-
+/**
+ * Default entry point for "Try with VESTORA".
+ *
+ * The real try-on runs in the extension's own page (side panel / pop-out window,
+ * tryon/tryon.html): there MediaPipe pose tracking, Decart HD Live, and ML garment
+ * cutout work on every site. This in-page widget stays as a fallback if the
+ * extension page cannot open.
+ */
 export function openVestoraPanel(product: Product): void {
+  try {
+    chrome.runtime.sendMessage({ type: "VESTORA_OPEN_SIDEPANEL", payload: product }, (resp?: { success?: boolean }) => {
+      if (chrome.runtime.lastError || !resp?.success) openInPagePanel(product);
+    });
+    return;
+  } catch {
+    /* extension context unavailable -> fall back to the in-page widget */
+  }
+  openInPagePanel(product);
+}
+
+function openInPagePanel(product: Product): void {
   if (panelHost && shadowRoot) {
     addOutfitItem(product, false);
     showToast(`✦ Added ${product.name.slice(0, 28)}…`);
