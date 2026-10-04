@@ -8,12 +8,31 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const PYTHON_VTON_URL = process.env.PYTHON_VTON_URL || "http://localhost:5000";
+const MODEL_DIR = path.resolve("models");
+const LOCAL_BROWSER_MODELS = [
+  "pose_landmarker_lite.task",
+  "selfie_multiclass_256x256.tflite"
+];
+
+function getLocalModelAssets() {
+  return LOCAL_BROWSER_MODELS.map((file) => {
+    const absPath = path.join(MODEL_DIR, file);
+    return {
+      file,
+      path: `models/${file}`,
+      available: fs.existsSync(absPath),
+      bytes: fs.existsSync(absPath) ? fs.statSync(absPath).size : 0
+    };
+  });
+}
 
 app.use(cors({
   origin: true,
@@ -36,6 +55,7 @@ app.get("/api/health", async (req, res) => {
     service: "VESTORA In-House AI VTON Engine Server",
     mode: "in-house-neural-vton",
     model: "CatVTON-v1.0 (Modular)",
+    localBrowserModels: getLocalModelAssets(),
     cloudDependent: false,
     pythonVTONServer: pythonVTONOnline ? "online" : "standby",
     version: "2.0.0",
@@ -44,27 +64,43 @@ app.get("/api/health", async (req, res) => {
 });
 
 // 2. VTON Engine Status
-app.get("/api/tryon/status", async (req, res) => {
+app.get(["/api/tryon/status", "/api/vton/status"], async (req, res) => {
+  try {
+    const pyResp = await fetch(`${PYTHON_VTON_URL}/api/vton/status`, { signal: AbortSignal.timeout(1000) });
+    if (pyResp.ok) {
+      const data = await pyResp.json();
+      return res.json({
+        ...data,
+        localBrowserModels: getLocalModelAssets()
+      });
+    }
+  } catch {}
+
   try {
     const pyResp = await fetch(`${PYTHON_VTON_URL}/api/tryon/status`, { signal: AbortSignal.timeout(1000) });
     if (pyResp.ok) {
       const data = await pyResp.json();
-      return res.json(data);
+      return res.json({
+        ...data,
+        localBrowserModels: getLocalModelAssets()
+      });
     }
   } catch {}
 
   res.json({
     status: "ready",
-    active_engine: "CatVTON-Modular",
+    active_engine: "client_in_house",
     device: "mps-auto",
-    architecture: "modular-vton-pipeline",
+    architecture: "client-mesh-fallback-with-local-model-assets",
     supported_categories: [
       "upper_body", "lower_body", "full_body", "footwear", "accessory"
     ],
+    pythonVTONServer: "standby",
+    localBrowserModels: getLocalModelAssets(),
     metadata: {
-      name: "CatVTON",
-      repository: "https://github.com/Zheng-Chong/CatVTON.git",
-      license: "CC BY-NC-SA 4.0",
+      name: "VESTORA Client In-House Renderer",
+      repository: "local",
+      license: "project",
       local: true
     }
   });
@@ -86,8 +122,9 @@ app.post("/api/classify-garment", async (req, res) => {
   } catch {}
 
   // Native fallback classifier if Python service is on standby
-  const { title = "Garment", category = "" } = req.body || {};
-  const lower = `${title} ${category}`.toLowerCase();
+  const { title, name, category = "" } = req.body || {};
+  const productTitle = title || name || "Garment";
+  const lower = `${productTitle} ${category}`.toLowerCase();
 
   let cat = "upper_body";
   let gType = "shirt";
@@ -120,6 +157,11 @@ app.post("/api/classify-garment", async (req, res) => {
 
   res.json({
     success: true,
+    category: cat,
+    type: gType,
+    target_region: targetRegion,
+    target_body_regions: targetBody,
+    confidence: 0.95,
     classification: {
       category: cat,
       type: gType,
@@ -148,6 +190,7 @@ app.post("/api/extract-garment", async (req, res) => {
   const image = req.body?.image || req.body?.imageUrl;
   res.json({
     success: true,
+    extracted_garment: image,
     extracted_garment_b64: image,
     bbox: { x: 0, y: 0, width: 800, height: 800 }
   });
@@ -236,10 +279,11 @@ app.post("/api/vton/try-on", async (req, res) => {
     }
   } catch {}
 
-  res.json({
-    success: true,
+  res.status(503).json({
+    success: false,
     engine: req.body?.engine || "RT-VTON",
-    tryon_image_b64: req.body?.person || req.body?.person_image || ""
+    error: "Python VTON server is offline. Use the client-side in-house renderer fallback.",
+    fallback: "client_in_house"
   });
 });
 
@@ -258,10 +302,11 @@ app.post("/api/vton/frame", async (req, res) => {
     }
   } catch {}
 
-  res.json({
-    success: true,
+  res.status(503).json({
+    success: false,
     engine: "RT-VTON",
-    frame_image_b64: req.body?.frame || req.body?.person || ""
+    error: "Python VTON server is offline. Use the client-side in-house renderer fallback.",
+    fallback: "client_in_house"
   });
 });
 

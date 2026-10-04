@@ -92,6 +92,7 @@ class VTONRequestHandler(BaseHTTPRequestHandler):
                 res = extractor.extract_from_base64(image_b64, category=category, garment_type=garment_type)
                 return self._send_json({
                     "success": True,
+                    "extracted_garment": res["extracted_b64"],
                     "extracted_garment_b64": res["extracted_b64"],
                     "bbox": res["bbox"]
                 })

@@ -12,6 +12,7 @@ Orchestrates:
 from typing import Dict, Any, Optional, Union
 import io
 import base64
+import os
 from PIL import Image
 
 from ..garment_classifier import GarmentClassifier

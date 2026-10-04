@@ -334,7 +334,7 @@ class VestoraInHouseVTONManager {
       });
       if (resp.ok) {
         const data = await resp.json();
-        return data.extracted_garment || null;
+        return data.extracted_garment || data.extracted_garment_b64 || null;
       }
     } catch {}
     return null;
@@ -649,6 +649,8 @@ if (RT_VTON_SUPPORTED.includes(garmentItem.garmentCategory)) {
                     const img = new Image();
                     img.onload = () => ctx.drawImage(img, 0, 0, canvasEl.width, canvasEl.height);
                     img.src = `data:image/png;base64,${res.frame_image_b64}`;
+                } else {
+                    renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
                 }
             })
             .catch(e => {
@@ -659,13 +661,13 @@ if (RT_VTON_SUPPORTED.includes(garmentItem.garmentCategory)) {
         // Early return – RT‑VTON handled this frame.
         return;
     }
-  // If category unsupported, fall back to in‑house rendering.
+  // If category unsupported, fall back to in-house rendering.
   renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
 } else {
-  // No RT‑VTON backend – use the existing in‑house pipeline.
+  // No RT-VTON backend - use the existing in-house pipeline.
   renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
-
-
+}
+  }
 
   animationFrameId = requestAnimationFrame(frame);
 }
@@ -1269,13 +1271,13 @@ function renderRing(pose, canvasWidth, canvasHeight, item, isMirrored) {
   ctx.restore();
 }
 
-function processGarmentCutout(img) {
-  const canvas = processItemCutout(img);
+function processGarmentCutout(img, category = "upper_body") {
+  const canvas = processItemCutout(img, category);
   processedGarmentCanvas = canvas;
   return canvas;
 }
 
-function processItemCutout(img) {
+function processItemCutout(img, category = "upper_body") {
   try {
     const ow = img.naturalWidth || img.width;
     const oh = img.naturalHeight || img.height;
@@ -1290,37 +1292,46 @@ function processItemCutout(img) {
     const imgData = octx.getImageData(0, 0, ow, oh);
     const data = imgData.data;
 
-    // Sample border pixels along top, bottom, left, right to find true studio background color
+    const garmentCategory = normalizeGarmentCategoryForTexture(category);
+
+    // Sample border pixels along top, bottom, left, right to find true studio/catalog background color
     let bgR = 0, bgG = 0, bgB = 0, borderCount = 0;
+    let borderVariance = 0;
+    const borderSamples = [];
     const stepX = Math.max(1, Math.floor(ow / 25));
     const stepY = Math.max(1, Math.floor(oh / 25));
 
+    const sampleBorderPixel = (i) => {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      bgR += r; bgG += g; bgB += b;
+      borderSamples.push([r, g, b]);
+      borderCount++;
+    };
+
     for (let x = 0; x < ow; x += stepX) {
-      let i = x * 4;
-      bgR += data[i]; bgG += data[i + 1]; bgB += data[i + 2];
-      i = ((oh - 1) * ow + x) * 4;
-      bgR += data[i]; bgG += data[i + 1]; bgB += data[i + 2];
-      borderCount += 2;
+      sampleBorderPixel(x * 4);
+      sampleBorderPixel(((oh - 1) * ow + x) * 4);
     }
     for (let y = 0; y < oh; y += stepY) {
-      let i = (y * ow) * 4;
-      bgR += data[i]; bgG += data[i + 1]; bgB += data[i + 2];
-      i = (y * ow + (ow - 1)) * 4;
-      bgR += data[i]; bgG += data[i + 1]; bgB += data[i + 2];
-      borderCount += 2;
+      sampleBorderPixel((y * ow) * 4);
+      sampleBorderPixel((y * ow + (ow - 1)) * 4);
     }
 
     bgR /= borderCount;
     bgG /= borderCount;
     bgB /= borderCount;
 
-    // Check if background is studio / catalog light backdrop
-    const avgLight = (bgR + bgG + bgB) / 3;
-    if (avgLight < 175) {
-      return offscreen; // Dark or non-studio photo, retain as is
+    for (const [r, g, b] of borderSamples) {
+      borderVariance += (r - bgR) ** 2 + (g - bgG) ** 2 + (b - bgB) ** 2;
     }
+    const borderStd = Math.sqrt(borderVariance / Math.max(1, borderSamples.length * 3));
 
-    const threshold = 36;
+    const avgLight = (bgR + bgG + bgB) / 3;
+    const edgeLooksLikeBackground = borderStd < 42 || avgLight > 145;
+    const threshold = avgLight < 175 ? 52 : 36;
+
     const visited = new Uint8Array(ow * oh);
     const queue = new Int32Array(ow * oh);
     let qHead = 0;
@@ -1328,99 +1339,101 @@ function processItemCutout(img) {
 
     const colorDist = (r, g, b) => Math.sqrt((r - bgR) ** 2 + (g - bgG) ** 2 + (b - bgB) ** 2);
 
-    // Seed BFS flood-fill from all 4 outer borders of the image
-    for (let x = 0; x < ow; x++) {
-      const idxTop = x * 4;
-      if (colorDist(data[idxTop], data[idxTop + 1], data[idxTop + 2]) < threshold + 16) {
-        visited[x] = 1;
-        queue[qTail++] = x;
+    if (edgeLooksLikeBackground) {
+      // Seed BFS flood-fill from all 4 outer borders of the image
+      for (let x = 0; x < ow; x++) {
+        const idxTop = x * 4;
+        if (colorDist(data[idxTop], data[idxTop + 1], data[idxTop + 2]) < threshold + 18) {
+          visited[x] = 1;
+          queue[qTail++] = x;
+        }
+        const posB = (oh - 1) * ow + x;
+        const idxB = posB * 4;
+        if (colorDist(data[idxB], data[idxB + 1], data[idxB + 2]) < threshold + 18) {
+          visited[posB] = 1;
+          queue[qTail++] = posB;
+        }
       }
-      const posB = (oh - 1) * ow + x;
-      const idxB = posB * 4;
-      if (colorDist(data[idxB], data[idxB + 1], data[idxB + 2]) < threshold + 16) {
-        visited[posB] = 1;
-        queue[qTail++] = posB;
+
+      for (let y = 0; y < oh; y++) {
+        const posL = y * ow;
+        const idxL = posL * 4;
+        if (!visited[posL] && colorDist(data[idxL], data[idxL + 1], data[idxL + 2]) < threshold + 18) {
+          visited[posL] = 1;
+          queue[qTail++] = posL;
+        }
+        const posR = y * ow + (ow - 1);
+        const idxR = posR * 4;
+        if (!visited[posR] && colorDist(data[idxR], data[idxR + 1], data[idxR + 2]) < threshold + 18) {
+          visited[posR] = 1;
+          queue[qTail++] = posR;
+        }
+      }
+
+      // Traverse connected background pixels and erase them
+      while (qHead < qTail) {
+        const pos = queue[qHead++];
+        const px = pos % ow;
+        const py = Math.floor(pos / ow);
+        const idx = pos * 4;
+
+        const r = data[idx];
+        const g = data[idx + 1];
+        const b = data[idx + 2];
+        const dist = colorDist(r, g, b);
+
+        if (dist < threshold) {
+          data[idx + 3] = 0; // Transparent
+        } else {
+          const alpha = Math.max(0, Math.min(1, (dist - threshold) / 18));
+          data[idx + 3] = Math.round(data[idx + 3] * alpha);
+        }
+
+        // Check 4-connected neighbors
+        const neighbors = [
+          pos - 1,
+          pos + 1,
+          pos - ow,
+          pos + ow,
+        ];
+
+        if (px > 0 && !visited[neighbors[0]]) {
+          const nPos = neighbors[0];
+          const nIdx = nPos * 4;
+          if (colorDist(data[nIdx], data[nIdx + 1], data[nIdx + 2]) < threshold + 18) {
+            visited[nPos] = 1;
+            queue[qTail++] = nPos;
+          }
+        }
+        if (px < ow - 1 && !visited[neighbors[1]]) {
+          const nPos = neighbors[1];
+          const nIdx = nPos * 4;
+          if (colorDist(data[nIdx], data[nIdx + 1], data[nIdx + 2]) < threshold + 18) {
+            visited[nPos] = 1;
+            queue[qTail++] = nPos;
+          }
+        }
+        if (py > 0 && !visited[neighbors[2]]) {
+          const nPos = neighbors[2];
+          const nIdx = nPos * 4;
+          if (colorDist(data[nIdx], data[nIdx + 1], data[nIdx + 2]) < threshold + 18) {
+            visited[nPos] = 1;
+            queue[qTail++] = nPos;
+          }
+        }
+        if (py < oh - 1 && !visited[neighbors[3]]) {
+          const nPos = neighbors[3];
+          const nIdx = nPos * 4;
+          if (colorDist(data[nIdx], data[nIdx + 1], data[nIdx + 2]) < threshold + 18) {
+            visited[nPos] = 1;
+            queue[qTail++] = nPos;
+          }
+        }
       }
     }
 
-    for (let y = 0; y < oh; y++) {
-      const posL = y * ow;
-      const idxL = posL * 4;
-      if (!visited[posL] && colorDist(data[idxL], data[idxL + 1], data[idxL + 2]) < threshold + 16) {
-        visited[posL] = 1;
-        queue[qTail++] = posL;
-      }
-      const posR = y * ow + (ow - 1);
-      const idxR = posR * 4;
-      if (!visited[posR] && colorDist(data[idxR], data[idxR + 1], data[idxR + 2]) < threshold + 16) {
-        visited[posR] = 1;
-        queue[qTail++] = posR;
-      }
-    }
-
-    // Traverse connected background pixels and erase them
-    while (qHead < qTail) {
-      const pos = queue[qHead++];
-      const px = pos % ow;
-      const py = Math.floor(pos / ow);
-      const idx = pos * 4;
-
-      const r = data[idx];
-      const g = data[idx + 1];
-      const b = data[idx + 2];
-      const dist = colorDist(r, g, b);
-
-      if (dist < threshold) {
-        data[idx + 3] = 0; // Transparent
-      } else {
-        const alpha = Math.max(0, Math.min(1, (dist - threshold) / 16));
-        data[idx + 3] = Math.round(data[idx + 3] * alpha);
-      }
-
-      // Check 4-connected neighbors
-      const neighbors = [
-        pos - 1,
-        pos + 1,
-        pos - ow,
-        pos + ow,
-      ];
-
-      if (px > 0 && !visited[neighbors[0]]) {
-        const nPos = neighbors[0];
-        const nIdx = nPos * 4;
-        if (colorDist(data[nIdx], data[nIdx + 1], data[nIdx + 2]) < threshold + 16) {
-          visited[nPos] = 1;
-          queue[qTail++] = nPos;
-        }
-      }
-      if (px < ow - 1 && !visited[neighbors[1]]) {
-        const nPos = neighbors[1];
-        const nIdx = nPos * 4;
-        if (colorDist(data[nIdx], data[nIdx + 1], data[nIdx + 2]) < threshold + 16) {
-          visited[nPos] = 1;
-          queue[qTail++] = nPos;
-        }
-      }
-      if (py > 0 && !visited[neighbors[2]]) {
-        const nPos = neighbors[2];
-        const nIdx = nPos * 4;
-        if (colorDist(data[nIdx], data[nIdx + 1], data[nIdx + 2]) < threshold + 16) {
-          visited[nPos] = 1;
-          queue[qTail++] = nPos;
-        }
-      }
-      if (py < oh - 1 && !visited[neighbors[3]]) {
-        const nPos = neighbors[3];
-        const nIdx = nPos * 4;
-        if (colorDist(data[nIdx], data[nIdx + 1], data[nIdx + 2]) < threshold + 16) {
-          visited[nPos] = 1;
-          queue[qTail++] = nPos;
-        }
-      }
-    }
-
-    // Erase human model head, face, and neck from upper portion of catalog photos so only the garment is tried on
-    const maxHeadY = Math.floor(oh * 0.35);
+    // Erase human model head, face, neck, and exposed hands from catalog photos so only the garment is tried on.
+    const maxHeadY = Math.floor(oh * 0.42);
     for (let y = 0; y < maxHeadY; y++) {
       for (let x = 0; x < ow; x++) {
         const idx = (y * ow + x) * 4;
@@ -1431,13 +1444,14 @@ function processItemCutout(img) {
         const b = data[idx + 2];
 
         // Detect model skin tones (face, chin, neck)
-        const isSkin = (r > 75 && g > 40 && b > 25 &&
+        const isSkin = (r > 105 && g > 45 && b > 25 &&
                         r > g && r > b &&
-                        Math.abs(r - g) > 10 &&
-                        (Math.max(r, g, b) - Math.min(r, g, b)) > 12);
+                        (r - g) > 12 &&
+                        (r - b) > 24 &&
+                        (Math.max(r, g, b) - Math.min(r, g, b)) > 22);
 
         // Detect model hair in the top 22%
-        const isHair = y < oh * 0.22 && (r < 55 && g < 55 && b < 55);
+        const isHair = y < oh * 0.25 && (r < 65 && g < 65 && b < 65);
 
         if (isSkin || isHair) {
           data[idx + 3] = 0;
@@ -1446,11 +1460,87 @@ function processItemCutout(img) {
     }
 
     octx.putImageData(imgData, 0, 0);
-    return offscreen;
+    return cropGarmentTexture(offscreen, garmentCategory);
   } catch (e) {
     console.warn("[VESTORA] processItemCutout error:", e);
     return null;
   }
+}
+
+function normalizeGarmentCategoryForTexture(category) {
+  if (category === "tops" || category === "shirt" || category === "jacket") return "upper_body";
+  if (category === "pants" || category === "bottoms") return "lower_body";
+  return category || "upper_body";
+}
+
+function getAlphaBounds(imgData, width, height, minAlpha = 12) {
+  const data = imgData.data;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  let opaqueCount = 0;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const alpha = data[(y * width + x) * 4 + 3];
+      if (alpha > minAlpha) {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+        opaqueCount++;
+      }
+    }
+  }
+
+  if (maxX < minX || maxY < minY) return null;
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX + 1,
+    height: maxY - minY + 1,
+    opaqueRatio: opaqueCount / (width * height),
+  };
+}
+
+function cropGarmentTexture(sourceCanvas, category = "upper_body") {
+  const width = sourceCanvas.width;
+  const height = sourceCanvas.height;
+  const sourceCtx = sourceCanvas.getContext("2d", { willReadFrequently: true });
+  const imgData = sourceCtx.getImageData(0, 0, width, height);
+  const bounds = getAlphaBounds(imgData, width, height);
+
+  if (!bounds) return sourceCanvas;
+
+  const fullModelLike = bounds.height > bounds.width * 1.25 || height > width * 1.2;
+  const crop = { ...bounds };
+
+  if (category === "upper_body" && fullModelLike) {
+    crop.y = Math.max(0, bounds.y - Math.round(bounds.height * 0.02));
+    crop.height = Math.min(height - crop.y, Math.round(bounds.height * 0.58));
+  } else if (category === "lower_body" && fullModelLike) {
+    crop.y = Math.max(0, bounds.y + Math.round(bounds.height * 0.36));
+    crop.height = Math.min(height - crop.y, Math.round(bounds.height * 0.62));
+  } else if (category === "full_body") {
+    crop.height = Math.min(height - crop.y, bounds.height);
+  }
+
+  const padX = Math.round(crop.width * 0.08);
+  const padY = Math.round(crop.height * 0.06);
+  const sx = Math.max(0, crop.x - padX);
+  const sy = Math.max(0, crop.y - padY);
+  const sw = Math.min(width - sx, crop.width + padX * 2);
+  const sh = Math.min(height - sy, crop.height + padY * 2);
+
+  if (sw <= 0 || sh <= 0) return sourceCanvas;
+
+  const output = document.createElement("canvas");
+  output.width = sw;
+  output.height = sh;
+  const outCtx = output.getContext("2d");
+  outCtx.drawImage(sourceCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+  return output;
 }
 
 // ─── Universal Drag and Drop Garment Ingestion (Anywear Signature) ───
@@ -1798,7 +1888,7 @@ function loadDirectImage(item) {
   img.onload = () => {
     garmentLoader?.classList.add("hidden");
     item.imageElement = img;
-    const cutout = processItemCutout(img);
+    const cutout = processItemCutout(img, item.garmentCategory);
     item.processedCanvas = cutout;
 
     if (currentProduct?.id === item.id) {
@@ -1848,7 +1938,7 @@ function loadItemViaBgFetch(item) {
           const img = new Image();
           img.onload = () => {
             item.imageElement = img;
-            item.processedCanvas = processItemCutout(img);
+            item.processedCanvas = processItemCutout(img, item.garmentCategory);
             if (currentProduct?.id === item.id) {
               garmentImage = img;
               processedGarmentCanvas = item.processedCanvas;
@@ -2494,4 +2584,3 @@ if (productParam) {
   autoLoadProductFromStorage();
 }
 void 0;
-

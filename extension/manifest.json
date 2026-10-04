@@ -43,7 +43,9 @@
         "tryon/tryon.html",
         "tryon/tryon.css",
         "tryon/tryon.js",
-        "tryon/permission.html"
+        "tryon/permission.html",
+        "models/pose_landmarker_lite.task",
+        "models/selfie_multiclass_256x256.tflite"
       ],
       "matches": ["<all_urls>"]
     }

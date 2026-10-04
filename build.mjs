@@ -34,6 +34,7 @@ async function build() {
   fs.mkdirSync("dist/styles", { recursive: true });
   fs.mkdirSync("dist/assets/logo", { recursive: true });
   fs.mkdirSync("dist/assets/icons", { recursive: true });
+  fs.mkdirSync("dist/models", { recursive: true });
 
   // 2. Copy static assets
   fs.copyFileSync("extension/manifest.json", "dist/manifest.json");
@@ -48,6 +49,12 @@ async function build() {
   fs.copyFileSync("extension/tryon/permission.html", "dist/tryon/permission.html");
 
   await copyDir("extension/assets", "dist/assets");
+  for (const modelFile of ["pose_landmarker_lite.task", "selfie_multiclass_256x256.tflite"]) {
+    const srcPath = path.join("models", modelFile);
+    if (fs.existsSync(srcPath)) {
+      fs.copyFileSync(srcPath, path.join("dist/models", modelFile));
+    }
+  }
 
   // 3. Shared esbuild options
   const commonOptions = {
