@@ -31,7 +31,7 @@ interface OutfitLayer {
   offsetY: number;
   opacity: number;
   imageElement: HTMLImageElement | null;
-  processedCanvas: HTMLCanvasElement | null;
+  processedCanvas: HTMLCanvasElement | HTMLImageElement | null;
   availableSizes: string[];
 }
 
@@ -1239,15 +1239,19 @@ const P = POSE_LANDMARK;
 
 function drawUpperBody(lm:LM, w:number, h:number, item:OutfitLayer, src:CanvasImageSource, mir:boolean) {
   if (videoEl && videoEl.videoWidth && src) {
-    inHouseVton.renderTryOn(ctx!, videoEl, src, lm, {
-      fitScale: item.scale * fitScale,
-      fitOffsetY: item.offsetY + fitOffsetY,
-      fitOpacity: item.opacity * fitOpacity,
-      enableLightingTransfer: true,
-      enableArmOcclusion: true,
-      isMirrored: mir,
-    });
-    return;
+    try {
+      inHouseVton.renderTryOn(ctx!, videoEl, src, lm, {
+        fitScale: item.scale * fitScale,
+        fitOffsetY: item.offsetY + fitOffsetY,
+        fitOpacity: item.opacity * fitOpacity,
+        enableLightingTransfer: true,
+        enableArmOcclusion: true,
+        isMirrored: mir,
+      });
+      return;
+    } catch (err) {
+      console.warn("[VESTORA Panel] Dense mesh error, falling back to rotation:", err);
+    }
   }
   const ls=lm[P.LEFT_SHOULDER],rs=lm[P.RIGHT_SHOULDER],lhip=lm[P.LEFT_HIP];
   if(!ls||!rs||!lhip)return;
@@ -1271,15 +1275,19 @@ function drawLowerBody(lm:LM, w:number, h:number, item:OutfitLayer, src:CanvasIm
 }
 function drawFullBody(lm:LM, w:number, h:number, item:OutfitLayer, src:CanvasImageSource, mir:boolean) {
   if (videoEl && videoEl.videoWidth && src) {
-    inHouseVton.renderTryOn(ctx!, videoEl, src, lm, {
-      fitScale: item.scale * fitScale * 1.08,
-      fitOffsetY: item.offsetY + fitOffsetY,
-      fitOpacity: item.opacity * fitOpacity,
-      enableLightingTransfer: true,
-      enableArmOcclusion: true,
-      isMirrored: mir,
-    });
-    return;
+    try {
+      inHouseVton.renderTryOn(ctx!, videoEl, src, lm, {
+        fitScale: item.scale * fitScale * 1.08,
+        fitOffsetY: item.offsetY + fitOffsetY,
+        fitOpacity: item.opacity * fitOpacity,
+        enableLightingTransfer: true,
+        enableArmOcclusion: true,
+        isMirrored: mir,
+      });
+      return;
+    } catch (err) {
+      console.warn("[VESTORA Panel] Dense mesh error, falling back to rotation:", err);
+    }
   }
   const ls=lm[5],rs=lm[6],la=lm[15];
   if(!ls||!rs||!la)return;
@@ -1401,14 +1409,19 @@ function addOutfitItem(product: Product & { garmentCategory?: string }, replace:
   img.crossOrigin = "anonymous";
   img.onload = () => {
     item.imageElement = img;
-    item.processedCanvas = processCutout(img);
+    item.processedCanvas = processCutout(img) || img;
     renderOutfitList();
     renderSizePills(item.availableSizes);
     showToast(`✦ ${item.name.slice(0,26)} ready!`);
   };
   img.onerror = () => {
     const img2 = new Image();
-    img2.onload = () => { item.imageElement = img2; renderOutfitList(); };
+    img2.onload = () => {
+      item.imageElement = img2;
+      item.processedCanvas = img2;
+      renderOutfitList();
+      renderSizePills(item.availableSizes);
+    };
     img2.src = item.imageUrl;
   };
   img.src = item.imageUrl;

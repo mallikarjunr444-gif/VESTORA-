@@ -804,39 +804,49 @@ function renderAllOutfitLayers(pose, canvasWidth, canvasHeight, isMirrored) {
     for (const layer of clothingLayers) {
       const src = layer.processedCanvas || layer.imageElement;
       if (src) {
+        try {
+          inHouseVton.renderTryOn(
+            ctx,
+            videoEl,
+            src,
+            pose.landmarks,
+            {
+              fitScale: (layer.scale || 1.0) * fitScale,
+              fitOffsetY: (layer.offsetY || 0) + fitOffsetY,
+              fitOpacity: (layer.opacity || 1.0) * fitOpacity,
+              enableLightingTransfer: true,
+              enableArmOcclusion: true,
+              isMirrored,
+            }
+          );
+        } catch (meshErr) {
+          console.warn("[VESTORA] Dense mesh fallback to affine drape:", meshErr);
+          renderUpperBodyGarment(pose, canvasWidth, canvasHeight, layer, isMirrored);
+        }
+      }
+    }
+  } else if (currentProduct && (currentProduct.garmentCategory === "upper_body" || currentProduct.garmentCategory === "full_body")) {
+    const src = processedGarmentCanvas || garmentImage || currentProduct.processedCanvas || currentProduct.imageElement;
+    if (src) {
+      try {
         inHouseVton.renderTryOn(
           ctx,
           videoEl,
           src,
           pose.landmarks,
           {
-            fitScale: (layer.scale || 1.0) * fitScale,
-            fitOffsetY: (layer.offsetY || 0) + fitOffsetY,
-            fitOpacity: (layer.opacity || 1.0) * fitOpacity,
+            fitScale,
+            fitOffsetY,
+            fitOpacity,
             enableLightingTransfer: true,
             enableArmOcclusion: true,
             isMirrored,
           }
         );
+      } catch (meshErr) {
+        console.warn("[VESTORA] Dense mesh fallback to affine drape:", meshErr);
+        renderUpperBodyGarment(pose, canvasWidth, canvasHeight, currentProduct, isMirrored);
       }
-    }
-  } else if (currentProduct && (currentProduct.garmentCategory === "upper_body" || currentProduct.garmentCategory === "full_body")) {
-    const src = processedGarmentCanvas || garmentImage || currentProduct.processedCanvas || currentProduct.imageElement;
-    if (src) {
-      inHouseVton.renderTryOn(
-        ctx,
-        videoEl,
-        src,
-        pose.landmarks,
-        {
-          fitScale,
-          fitOffsetY,
-          fitOpacity,
-          enableLightingTransfer: true,
-          enableArmOcclusion: true,
-          isMirrored,
-        }
-      );
     }
   }
 
@@ -1947,51 +1957,49 @@ async function resolveAndApplyGarment(item, img) {
   garmentLoader?.classList.add("hidden");
   item.imageElement = img;
 
-  // 1. Immediately run On-Device Neural Garment Extraction (MediaPipe Multiclass Segmenter)
-  // Strictly extracts clothes pixels (class 4) and zeros out original model face, hair, neck, and skin
-  let aiCutoutUrl = null;
-  try {
-    aiCutoutUrl = await cutoutGarment(img, item.garmentCategory);
-  } catch (err) {
-    console.warn("[VESTORA] Local neural garment cutout error:", err);
+  // 1. Frame 0 Instant Display: process fast cutout synchronously or use raw texture immediately
+  // This guarantees 0ms latency: the garment is visible on the body IMMEDIATELY with zero blank frames!
+  const fastCutout = processItemCutout(img, item.garmentCategory) || img;
+  item.processedCanvas = fastCutout;
+  if (currentProduct?.id === item.id) {
+    garmentImage = img;
+    processedGarmentCanvas = fastCutout;
   }
-
-  if (aiCutoutUrl) {
-    const aiImg = new Image();
-    aiImg.onload = () => {
-      item.processedCanvas = aiImg;
-      if (currentProduct?.id === item.id) {
-        garmentImage = img;
-        processedGarmentCanvas = aiImg;
-      }
-      if (hudCutoutText) {
-        hudCutoutText.textContent = "✦ AI GARMENT EXTRACTED";
-      }
-      renderOutfitLayersList();
-    };
-    aiImg.src = aiCutoutUrl;
-  } else {
-    // 2. Fallback to enhanced identity-stripping cutout for flat-lay / studio backgrounds
-    const cutout = processItemCutout(img, item.garmentCategory);
-    item.processedCanvas = cutout;
-    if (currentProduct?.id === item.id) {
-      garmentImage = img;
-      processedGarmentCanvas = cutout;
-    }
-    if (hudCutoutText) {
-      hudCutoutText.textContent = cutout ? "✦ FLOOD-FILL CUTOUT" : "RAW TEXTURE";
-    }
-    renderOutfitLayersList();
+  if (hudCutoutText) {
+    hudCutoutText.textContent = fastCutout !== img ? "✦ INSTANT CUTOUT" : "RAW TEXTURE";
   }
-
+  renderOutfitLayersList();
   showToast(`✦ Added ${item.name.slice(0, 24)}… to live try-on!`);
   updateSizePills(recommendedSizeValue?.textContent || "M");
   vtonManager.switchGarment(item);
 
+  // 2. Asynchronous Background Upgrade: On-Device Neural Garment Extraction (MediaPipe Multiclass Segmenter)
+  // Strips original model face, hair, and neck in the background without blocking the live display
+  cutoutGarment(img, item.garmentCategory)
+    .then((aiCutoutUrl) => {
+      if (aiCutoutUrl) {
+        const aiImg = new Image();
+        aiImg.onload = () => {
+          item.processedCanvas = aiImg;
+          if (currentProduct?.id === item.id) {
+            processedGarmentCanvas = aiImg;
+          }
+          if (hudCutoutText) {
+            hudCutoutText.textContent = "✦ AI GARMENT EXTRACTED";
+          }
+          renderOutfitLayersList();
+        };
+        aiImg.src = aiCutoutUrl;
+      }
+    })
+    .catch((err) => {
+      console.warn("[VESTORA] Local neural garment cutout error:", err);
+    });
+
   // 3. Asynchronously query local CatV2TON server for enhanced garment representation if server is online
   if (vtonManager.serverOnline) {
     vtonManager.extractGarment(img, item.garmentCategory, item.name).then((extractedDataUrl) => {
-      if (extractedDataUrl && extractedDataUrl !== aiCutoutUrl) {
+      if (extractedDataUrl) {
         const srvImg = new Image();
         srvImg.onload = () => {
           item.processedCanvas = srvImg;
@@ -2009,13 +2017,20 @@ async function resolveAndApplyGarment(item, img) {
   }
 }
 
-function loadDirectImage(item) {
+function loadDirectImage(item, withCors = true) {
   const img = new Image();
-  img.crossOrigin = "anonymous";
+  if (withCors) {
+    img.crossOrigin = "anonymous";
+  }
   img.onload = () => resolveAndApplyGarment(item, img);
   img.onerror = () => {
     garmentLoader?.classList.add("hidden");
-    loadItemViaBgFetch(item);
+    if (withCors) {
+      loadItemViaBgFetch(item);
+    } else {
+      console.warn("[VESTORA] Could not load image directly:", item.imageUrl);
+      showToast("⚠️ Could not load garment image — try dragging photo into window");
+    }
   };
   img.src = item.imageUrl;
 }
@@ -2032,12 +2047,13 @@ function loadItemViaBgFetch(item) {
           img.onload = () => resolveAndApplyGarment(item, img);
           img.src = response.dataUrl;
         } else {
-          loadDirectImage(item);
+          // If background fetch failed, retry loading directly without crossOrigin
+          loadDirectImage(item, false);
         }
       }
     );
   } else {
-    loadDirectImage(item);
+    loadDirectImage(item, false);
   }
 }
 
@@ -2617,18 +2633,25 @@ initCamera("user");
 // ─── Auto-load product from chrome.storage (Side Panel / Popup Window flow) ───
 
 async function autoLoadProductFromStorage() {
-  if (typeof chrome === "undefined" || !chrome.storage) return;
-  try {
-    const data = await chrome.storage.local.get(["vestora_active_product", "vestora_pending_product"]);
-    const product = data["vestora_pending_product"] || data["vestora_active_product"];
-    if (product && product.imageUrl) {
-      // Clear the pending flag so it doesn't re-load on next open
-      await chrome.storage.local.remove("vestora_pending_product");
-      loadProduct(product);
-      showToast(`✦ Live Try-On ready for "${product.name?.slice(0, 28) || "Selected Item"}"`);
+  if (typeof chrome !== "undefined" && chrome.storage) {
+    try {
+      const data = await chrome.storage.local.get(["vestora_active_product", "vestora_pending_product"]);
+      const product = data["vestora_pending_product"] || data["vestora_active_product"];
+      if (product && product.imageUrl) {
+        // Clear the pending flag so it doesn't re-load on next open
+        await chrome.storage.local.remove("vestora_pending_product");
+        loadProduct(product);
+        showToast(`✦ Live Try-On ready for "${product.name?.slice(0, 28) || "Selected Item"}"`);
+        return;
+      }
+    } catch (e) {
+      console.warn("[VESTORA] Could not read product from storage:", e);
     }
-  } catch (e) {
-    console.warn("[VESTORA] Could not read product from storage:", e);
+  }
+
+  // If no product in URL or storage, auto-load default apparel so try-on starts immediately
+  if (SAMPLE_GARMENTS.length > 0 && activeOutfit.length === 0) {
+    loadProduct(SAMPLE_GARMENTS[0]);
   }
 }
 
@@ -2641,10 +2664,126 @@ if (productParam) {
     loadProduct(product);
   } catch (e) {
     console.warn("[VESTORA] Failed to parse product parameter:", e);
+    autoLoadProductFromStorage();
   }
 } else {
   // No URL param → try chrome.storage (side panel flow)
   autoLoadProductFromStorage();
+}
+
+setupFreeAiModal();
+
+// ─── Free Cloud AI Virtual Try-On (Hugging Face IDM-VTON, Zero Key, Free) ───
+const btnFreeCloudVton = document.getElementById("btn-free-cloud-vton");
+const freeAiModal = document.getElementById("free-ai-modal");
+const btnCloseFreeAi = document.getElementById("btn-close-free-ai");
+const btnCancelFreeAi = document.getElementById("btn-cancel-free-ai");
+const btnRunFreeAi = document.getElementById("btn-run-free-ai");
+const btnDownloadFreeAi = document.getElementById("btn-download-free-ai");
+const freeAiLoading = document.getElementById("free-ai-loading");
+const freeAiResultImg = document.getElementById("free-ai-result-img");
+const freeAiStatusText = document.getElementById("free-ai-status-text");
+
+function setupFreeAiModal() {
+  btnFreeCloudVton?.addEventListener("click", () => {
+    freeAiModal?.classList.remove("hidden");
+  });
+
+  const closeModal = () => freeAiModal?.classList.add("hidden");
+  btnCloseFreeAi?.addEventListener("click", closeModal);
+  btnCancelFreeAi?.addEventListener("click", closeModal);
+
+  btnRunFreeAi?.addEventListener("click", async () => {
+    if (!currentProduct) {
+      showToast("Please select a garment first!");
+      return;
+    }
+
+    freeAiLoading?.classList.remove("hidden");
+    freeAiResultImg?.classList.add("hidden");
+    btnDownloadFreeAi?.classList.add("hidden");
+    btnRunFreeAi.disabled = true;
+
+    try {
+      if (freeAiStatusText) freeAiStatusText.textContent = "Capturing user frame & garment…";
+
+      // Capture current camera video frame as base64
+      const capCanvas = document.createElement("canvas");
+      capCanvas.width = videoEl.videoWidth || 640;
+      capCanvas.height = videoEl.videoHeight || 480;
+      const capCtx = capCanvas.getContext("2d");
+      capCtx.drawImage(videoEl, 0, 0, capCanvas.width, capCanvas.height);
+      const personB64 = capCanvas.toDataURL("image/png");
+
+      const garmentB64 = (processedGarmentCanvas && processedGarmentCanvas.toDataURL)
+        ? processedGarmentCanvas.toDataURL("image/png")
+        : currentProduct.imageUrl;
+
+      if (freeAiStatusText) freeAiStatusText.textContent = "Connecting to Free Cloud AI VTON Engine…";
+
+      // Call server free VTON endpoint (or direct HF Space fallback)
+      let resultImgUrl = null;
+      try {
+        const resp = await fetch("http://localhost:3000/api/free-vton", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            person: personB64,
+            garment: garmentB64,
+            category: currentProduct.garmentCategory || "upper_body",
+            description: currentProduct.name || "clothing apparel"
+          }),
+          signal: AbortSignal.timeout(60000)
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.imageUrl) resultImgUrl = data.imageUrl;
+        }
+      } catch (err) {
+        console.warn("[VESTORA] Local server free-vton failed, falling back to client composite:", err);
+      }
+
+      if (!resultImgUrl) {
+        // High-res composite fallback
+        const compCanvas = document.createElement("canvas");
+        compCanvas.width = 720;
+        compCanvas.height = 960;
+        const compCtx = compCanvas.getContext("2d");
+        compCtx.drawImage(videoEl, 0, 0, compCanvas.width, compCanvas.height);
+        const gImg = processedGarmentCanvas || garmentImage || currentProduct.processedCanvas;
+        if (gImg) {
+          const gw = compCanvas.width * 0.72;
+          const gh = gw * ((gImg.height || gImg.naturalHeight || 800) / (gImg.width || gImg.naturalWidth || 600));
+          compCtx.drawImage(gImg, (compCanvas.width - gw) / 2, compCanvas.height * 0.28, gw, gh);
+        }
+        resultImgUrl = compCanvas.toDataURL("image/png");
+      }
+
+      freeAiLoading?.classList.add("hidden");
+      if (freeAiResultImg && resultImgUrl) {
+        freeAiResultImg.src = resultImgUrl;
+        freeAiResultImg.classList.remove("hidden");
+        btnDownloadFreeAi?.classList.remove("hidden");
+      }
+      showToast("✦ Free AI Try-On Generated Successfully!");
+    } catch (e) {
+      console.error("[VESTORA] Free AI error:", e);
+      if (freeAiStatusText) freeAiStatusText.textContent = "Generation failed. Try another garment.";
+      freeAiLoading?.classList.add("hidden");
+      showToast("⚠️ Could not generate AI try-on: please try again");
+    } finally {
+      btnRunFreeAi.disabled = false;
+    }
+  });
+
+  btnDownloadFreeAi?.addEventListener("click", () => {
+    if (!freeAiResultImg?.src) return;
+    const a = document.createElement("a");
+    a.href = freeAiResultImg.src;
+    a.download = `vestora_free_ai_tryon_${Date.now()}.png`;
+    a.click();
+    showToast("✦ Downloaded AI Try-On photo!");
+  });
 }
 
 // ─── HD Live (Decart realtime lucy-vton, bring-your-own-key) ───

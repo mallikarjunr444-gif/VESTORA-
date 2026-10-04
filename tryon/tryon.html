@@ -37,6 +37,8 @@
         <button id="btn-popout-window" class="topbar-btn" aria-label="Pop-out Window" title="Open in Dedicated Window">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
         </button>
+        <!-- Free Cloud AI Try-On (Hugging Face IDM-VTON / CatVTON, Zero Key, Free) -->
+        <button id="btn-free-cloud-vton" class="topbar-btn topbar-btn-cloud-ai" aria-label="Free AI Cloud Try-On" title="Free AI Virtual Try-On: Generate photorealistic try-on using free public cloud AI (100% free, zero cost)">✦ Free AI</button>
         <!-- HD Live (Decart) -->
         <button id="btn-hd-live" class="topbar-btn" aria-label="HD Live (Decart)" title="HD Live: generative live try-on via your own Decart key" style="font-weight:700;font-size:12px;letter-spacing:.04em">HD</button>
         <!-- Flip Camera (front / back) -->
@@ -130,6 +132,35 @@
           <div class="paste-modal-actions">
             <button id="btn-hd-key-save" class="btn-modal-action primary">Start HD Live</button>
             <button id="btn-hd-key-cancel" class="btn-modal-action secondary">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Free AI Cloud Try-On Modal -->
+      <div id="free-ai-modal" class="paste-url-modal hidden">
+        <div class="paste-modal-card free-ai-card">
+          <div class="free-ai-header">
+            <div class="free-ai-title-row">
+              <span class="free-ai-sparkle">✦</span>
+              <h4>Free AI Virtual Try-On</h4>
+            </div>
+            <button id="btn-close-free-ai" class="btn-close-modal" aria-label="Close">×</button>
+          </div>
+          <p class="free-ai-subtitle">Powered by Free Public Cloud AI (Hugging Face IDM-VTON). 100% Free · Zero API Keys Needed.</p>
+
+          <div id="free-ai-preview-container" class="free-ai-preview-container">
+            <div id="free-ai-loading" class="free-ai-loading hidden">
+              <div class="loader-spinner"></div>
+              <p id="free-ai-status-text">Synthesizing photorealistic AI try-on…</p>
+              <div class="free-ai-progress-bar"><div id="free-ai-progress-fill" class="progress-fill"></div></div>
+            </div>
+            <img id="free-ai-result-img" class="free-ai-result-img hidden" alt="AI Try-On Result" />
+          </div>
+
+          <div class="paste-modal-actions free-ai-actions">
+            <button id="btn-run-free-ai" class="btn-modal-action primary">✦ Generate Free AI Try-On</button>
+            <button id="btn-download-free-ai" class="btn-modal-action secondary hidden">⬇ Download Image</button>
+            <button id="btn-cancel-free-ai" class="btn-modal-action secondary">Close</button>
           </div>
         </div>
       </div>

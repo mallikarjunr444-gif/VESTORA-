@@ -143,11 +143,133 @@ html, body {
   border-color: rgba(239, 68, 68, 0.5);
 }
 
+.topbar-btn-cloud-ai {
+  width: auto !important;
+  padding: 0 10px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.03em;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.45), rgba(236, 72, 153, 0.35)) !important;
+  border-color: rgba(167, 139, 250, 0.6) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.35);
+  display: inline-flex;
+  gap: 4px;
+}
+
+.topbar-btn-cloud-ai:hover {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.7), rgba(236, 72, 153, 0.6)) !important;
+  border-color: #c084fc !important;
+  box-shadow: 0 0 16px rgba(168, 85, 247, 0.6);
+}
+
 #btn-hd-live.active {
   background: linear-gradient(135deg, #7c3aed, #9333ea) !important;
   color: #ffffff !important;
   border-color: #c084fc !important;
   box-shadow: 0 0 12px rgba(168, 85, 247, 0.6);
+}
+
+/* ── Free AI Try-On Modal ── */
+.free-ai-card {
+  max-width: 440px !important;
+  width: 90% !important;
+}
+
+.free-ai-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.free-ai-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.free-ai-title-row h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--v-text);
+}
+
+.free-ai-sparkle {
+  color: var(--v-purple-light);
+  font-size: 16px;
+}
+
+.free-ai-subtitle {
+  font-size: 12px;
+  color: var(--v-text-muted);
+  margin: 0 0 14px 0;
+  line-height: 1.4;
+}
+
+.free-ai-preview-container {
+  width: 100%;
+  min-height: 240px;
+  max-height: 380px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.free-ai-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  color: var(--v-text);
+  font-size: 13px;
+}
+
+.free-ai-progress-bar {
+  width: 200px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.free-ai-progress-bar .progress-fill {
+  height: 100%;
+  width: 40%;
+  background: linear-gradient(90deg, var(--v-purple), var(--v-pink));
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  animation: progress-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes progress-pulse {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+
+.free-ai-result-img {
+  width: 100%;
+  height: 100%;
+  max-height: 380px;
+  object-fit: contain;
+  border-radius: 10px;
+}
+
+.free-ai-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 /* Mode Switcher: Live Camera vs Uploaded Photo */
