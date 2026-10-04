@@ -5,42 +5,49 @@
 
 import type { PoseEngine, PoseResult } from "../../shared/types/index.js";
 import { Logger } from "../../shared/utilities/logger.js";
+import { RealTimePoseTracker, LivePoseTrackResult, TrackedLandmark, BodyMeasurements } from "./real-time-pose-tracker.js";
 
 const logger = new Logger("PoseEngine");
 
+export { RealTimePoseTracker };
+export type { LivePoseTrackResult, TrackedLandmark, BodyMeasurements };
+
 export class BaselinePoseEngine implements PoseEngine {
   private isInitialized = false;
+  private tracker: RealTimePoseTracker | null = null;
 
   async initialize(): Promise<void> {
-    logger.info("Initializing baseline pose tracking engine…");
+    logger.info("Initializing real-time continuous pose tracking engine…");
+    this.tracker = new RealTimePoseTracker();
     this.isInitialized = true;
   }
 
   async processFrame(frame: ImageBitmap | HTMLVideoElement): Promise<PoseResult> {
-    if (!this.isInitialized) {
+    if (!this.isInitialized || !this.tracker) {
       throw new Error("BaselinePoseEngine is not initialized.");
     }
 
     const width = frame instanceof ImageBitmap ? frame.width : frame.videoWidth;
     const height = frame instanceof ImageBitmap ? frame.height : frame.videoHeight;
 
-    // Placeholder baseline returning normalized upper-body geometric anchors
+    const res = this.tracker.track(frame, width, height);
+
     return {
-      landmarks: [
-        { x: width * 0.5, y: height * 0.2, visibility: 0.95 }, // Nose
-        { x: width * 0.42, y: height * 0.32, visibility: 0.92 }, // Left Shoulder
-        { x: width * 0.58, y: height * 0.32, visibility: 0.92 }, // Right Shoulder
-        { x: width * 0.36, y: height * 0.48, visibility: 0.88 }, // Left Elbow
-        { x: width * 0.64, y: height * 0.48, visibility: 0.88 }, // Right Elbow
-        { x: width * 0.44, y: height * 0.62, visibility: 0.85 }, // Left Hip
-        { x: width * 0.56, y: height * 0.62, visibility: 0.85 }, // Right Hip
-      ],
-      confidence: 0.92,
-      timestamp: performance.now(),
+      landmarks: res.landmarks.map((l) => ({
+        x: l.x,
+        y: l.y,
+        visibility: l.v ?? 0.95,
+      })),
+      confidence: res.confidence,
+      timestamp: res.timestamp,
     };
   }
 
   dispose(): void {
+    if (this.tracker) {
+      this.tracker.reset();
+      this.tracker = null;
+    }
     this.isInitialized = false;
     logger.info("Pose tracking engine disposed.");
   }

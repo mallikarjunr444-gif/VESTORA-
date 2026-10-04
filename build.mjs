@@ -35,6 +35,7 @@ async function build() {
   fs.mkdirSync("dist/assets/logo", { recursive: true });
   fs.mkdirSync("dist/assets/icons", { recursive: true });
   fs.mkdirSync("dist/models", { recursive: true });
+  fs.mkdirSync("dist/mediapipe/wasm", { recursive: true });
 
   // 2. Copy static assets
   fs.copyFileSync("extension/manifest.json", "dist/manifest.json");
@@ -54,6 +55,12 @@ async function build() {
     if (fs.existsSync(srcPath)) {
       fs.copyFileSync(srcPath, path.join("dist/models", modelFile));
     }
+  }
+
+  // Copy MediaPipe pose wasm assets
+  const mediapipePoseDir = path.resolve("node_modules/@mediapipe/pose");
+  if (fs.existsSync(mediapipePoseDir)) {
+    await copyDir(mediapipePoseDir, "dist/mediapipe/wasm");
   }
 
   // 3. Shared esbuild options
@@ -108,6 +115,9 @@ async function build() {
     entryPoints: {
       "rendering/in-house-vton": "engine/rendering/in-house-vton.ts",
       "segmentation/index": "engine/segmentation/index.ts",
+      "tracking/index": "engine/tracking/index.ts",
+      "tracking/real-time-pose-tracker": "engine/tracking/real-time-pose-tracker.ts",
+      "garment/index": "engine/garment/index.ts",
     },
     outdir: "dist/engine",
     format: "esm",
@@ -124,6 +134,9 @@ async function build() {
   await copyDir("dist/styles", "styles");
   await copyDir("dist/tryon", "tryon");
   await copyDir("dist/assets", "assets");
+  if (fs.existsSync("dist/mediapipe/wasm")) {
+    await copyDir("dist/mediapipe/wasm", "mediapipe/wasm");
+  }
 
   // Clean out legacy files that referenced external Decart / Anywear URLs
   const legacyFilesToRemove = [

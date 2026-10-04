@@ -10,6 +10,11 @@
  */
 
 import type { Product } from "../../shared/types/index.js";
+import { RealTimePoseTracker } from "../../engine/tracking/real-time-pose-tracker.js";
+import { InHouseVTONEngine } from "../../engine/rendering/in-house-vton.js";
+
+const inHouseVton = new InHouseVTONEngine();
+const poseTracker = new RealTimePoseTracker();
 
 const PANEL_HOST_ID = "vestora-panel-host";
 const PANEL_WIDTH = 420;
@@ -330,6 +335,34 @@ const PANEL_CSS = `
     pointer-events: none;
   }
 
+  /* ── Drop Zone Overlay ── */
+  .v-drop-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(8, 10, 16, 0.88);
+    border: 2px dashed #818cf8;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    backdrop-filter: blur(8px);
+    transition: all 0.2s ease;
+    pointer-events: none;
+  }
+  .v-drop-overlay.hidden { display: none; }
+  .v-drop-card {
+    text-align: center;
+    padding: 20px 24px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  }
+  .v-drop-icon { font-size: 30px; margin-bottom: 6px; }
+  .v-drop-title { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .v-drop-sub { font-size: 11px; color: rgba(255, 255, 255, 0.65); }
+
   /* ── Toast ── */
   .v-toast {
     position: absolute;
@@ -622,6 +655,13 @@ function buildPanelHTML(): string {
       <div class="v-viewport" id="v-viewport">
         <video id="v-video" class="v-camera-video" autoplay playsinline muted></video>
         <canvas id="v-canvas" class="v-garment-canvas"></canvas>
+        <div class="v-drop-overlay hidden" id="v-drop-overlay">
+          <div class="v-drop-card">
+            <div class="v-drop-icon">✨</div>
+            <div class="v-drop-title">Drop Garment to Try On</div>
+            <div class="v-drop-sub">Drag any clothing photo from the page here</div>
+          </div>
+        </div>
         <div class="v-detect-ring detecting" id="v-detect-ring">
           <div class="ring-dot"></div>
           <span id="v-detect-label">Starting camera…</span>
@@ -900,6 +940,100 @@ function wireEvents() {
     (root.getElementById("v-photo-input") as HTMLInputElement).click();
   });
 
+  // ── Drag and Drop Clothing Ingestion (Anywear Signature) ──
+  const dropOverlay = root.getElementById("v-drop-overlay");
+  let dragCounter = 0;
+
+  panel.addEventListener("dragenter", (e) => {
+    e.preventDefault();
+    dragCounter++;
+    dropOverlay?.classList.remove("hidden");
+  });
+
+  panel.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    dropOverlay?.classList.remove("hidden");
+  });
+
+  panel.addEventListener("dragleave", (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter <= 0) {
+      dragCounter = 0;
+      dropOverlay?.classList.add("hidden");
+    }
+  });
+
+  panel.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    dropOverlay?.classList.add("hidden");
+
+    let droppedImageUrl: string | null = null;
+    let droppedName = "Dropped Garment";
+
+    // 1. Files drop (e.g. desktop image)
+    if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      if (file.type.startsWith("image/")) {
+        droppedName = file.name.replace(/\.[^/.]+$/, "");
+        droppedImageUrl = await new Promise((res) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result as string);
+          r.readAsDataURL(file);
+        });
+      }
+    }
+
+    // 2. HTML snippet drop (dragged <img> from shopping site)
+    if (!droppedImageUrl && e.dataTransfer) {
+      const html = e.dataTransfer.getData("text/html");
+      if (html) {
+        try {
+          const div = document.createElement("div");
+          div.innerHTML = html;
+          const img = div.querySelector("img");
+          if (img) {
+            droppedImageUrl = img.currentSrc || img.src || img.getAttribute("data-src") || img.getAttribute("data-zoom-src");
+            if (img.alt) droppedName = img.alt.trim();
+          }
+        } catch {}
+      }
+    }
+
+    // 3. URI list drop
+    if (!droppedImageUrl && e.dataTransfer) {
+      const uri = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("URL");
+      if (uri && (uri.startsWith("http") || uri.startsWith("data:image/"))) {
+        droppedImageUrl = uri.trim().split("\n")[0];
+      }
+    }
+
+    // 4. Plain text URL fallback
+    if (!droppedImageUrl && e.dataTransfer) {
+      const text = e.dataTransfer.getData("text/plain");
+      if (text && (text.startsWith("http://") || text.startsWith("https://") || text.startsWith("data:image/"))) {
+        droppedImageUrl = text.trim();
+      }
+    }
+
+    if (droppedImageUrl) {
+      const product: Product = {
+        id: `drop_${Date.now()}`,
+        name: droppedName,
+        imageUrl: droppedImageUrl,
+        category: "Clothing",
+        garmentCategory: mapCategory(droppedName, "Clothing"),
+        availableSizes: ["XS", "S", "M", "L", "XL", "XXL"],
+      };
+      addOutfitItem(product, true);
+      showToast(`✦ Trying on: ${droppedName.slice(0, 24)}…`);
+    } else {
+      showToast("⚠ Could not detect clothing image from drop");
+    }
+  });
+
   // ESC to close
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && panelHost) closePanel();
@@ -934,6 +1068,8 @@ function closePanel() {
   toggleTab?.classList.add("hidden");
   setTimeout(() => {
     stopCamera();
+    poseTracker.reset();
+    inHouseVton.reset();
     panelHost?.remove();
     panelHost = null;
     shadowRoot = null;
@@ -1033,10 +1169,20 @@ function startRenderLoop() {
   if (animFrameId) cancelAnimationFrame(animFrameId);
   function frame() {
     animFrameId = requestAnimationFrame(frame);
-    if (!ctx || !canvasEl || !isBodyDetected) return;
+    if (!ctx || !canvasEl) return;
     const w = canvasEl.width, h = canvasEl.height;
     if (!w || !h) return;
-    const pose = estimatePose(w, h);
+
+    const videoSource = (videoEl && videoEl.videoWidth) ? videoEl : canvasEl;
+    const liveTrack = poseTracker.track(videoSource, w, h);
+    if (liveTrack.isBodyDetected && !isBodyDetected) {
+      isBodyDetected = true;
+      setDetectRing(false, "Body Detected");
+    }
+
+    const pose = {
+      landmarks: liveTrack.landmarks,
+    };
     updateMeasurements(pose, w, h);
     ctx.clearRect(0, 0, w, h);
     renderAllLayers(pose, w, h, currentFacing === "user" && !!cameraStream);
@@ -1089,6 +1235,17 @@ type LM = {x:number,y:number}[];
 const P = POSE_LANDMARK;
 
 function drawUpperBody(lm:LM, w:number, h:number, item:OutfitLayer, src:CanvasImageSource, mir:boolean) {
+  if (videoEl && videoEl.videoWidth && src) {
+    inHouseVton.renderTryOn(ctx!, videoEl, src, lm, {
+      fitScale: item.scale * fitScale,
+      fitOffsetY: item.offsetY + fitOffsetY,
+      fitOpacity: item.opacity * fitOpacity,
+      enableLightingTransfer: true,
+      enableArmOcclusion: true,
+      isMirrored: mir,
+    });
+    return;
+  }
   const ls=lm[P.LEFT_SHOULDER],rs=lm[P.RIGHT_SHOULDER],lhip=lm[P.LEFT_HIP];
   if(!ls||!rs||!lhip)return;
   const sw=Math.abs(rs.x-ls.x),th=Math.abs(lhip.y-ls.y);
@@ -1110,6 +1267,17 @@ function drawLowerBody(lm:LM, w:number, h:number, item:OutfitLayer, src:CanvasIm
   ctx!.save(); ctx!.globalAlpha=item.opacity; ctx!.drawImage(src,dx,ty,gw,gh); ctx!.restore();
 }
 function drawFullBody(lm:LM, w:number, h:number, item:OutfitLayer, src:CanvasImageSource, mir:boolean) {
+  if (videoEl && videoEl.videoWidth && src) {
+    inHouseVton.renderTryOn(ctx!, videoEl, src, lm, {
+      fitScale: item.scale * fitScale * 1.08,
+      fitOffsetY: item.offsetY + fitOffsetY,
+      fitOpacity: item.opacity * fitOpacity,
+      enableLightingTransfer: true,
+      enableArmOcclusion: true,
+      isMirrored: mir,
+    });
+    return;
+  }
   const ls=lm[5],rs=lm[6],la=lm[15];
   if(!ls||!rs||!la)return;
   const sw=Math.abs(rs.x-ls.x),bh=Math.abs(la.y-ls.y);

@@ -1,4 +1,5 @@
 import { InHouseVTONEngine } from "../../engine/rendering/in-house-vton.js";
+import { RealTimePoseTracker } from "../../engine/tracking/real-time-pose-tracker.js";
 
 /**
  * VESTORA — Real-Time Live Virtual Try-On Widget Controller
@@ -8,11 +9,12 @@ import { InHouseVTONEngine } from "../../engine/rendering/in-house-vton.js";
  * 2. Complete Shirt Replacement (erases original shirt, conforms to body silhouette)
  * 3. Dynamic Arm & Hand Occlusion (renders real arms in front of the garment)
  * 4. Ambient Lighting & Fold Transfer (transfers real room lighting/wrinkles onto cloth)
- * 5. Temporal Motion Stabilization (Kalman/EMA filter prevents jitter during movement)
+ * 5. Continuous 60 FPS Optical & Anatomical Vision Body Tracker (follows motion, leaning, turning)
  * 6. Multi-item active outfit layers & real-time anatomical body measurements
  */
 
 const inHouseVton = new InHouseVTONEngine();
+const poseTracker = new RealTimePoseTracker();
 
 // ─── Constants: 19 Anatomical Anchor Landmarks ───
 const POSE_LANDMARK = {
@@ -289,6 +291,7 @@ class VestoraInHouseVTONManager {
     if (!garment) return;
     this.activeGarment = garment;
     inHouseVton.reset();
+    poseTracker.reset();
     showToast(`✦ In-House Try-On: Applied ${garment.name}!`);
   }
 
@@ -428,6 +431,7 @@ class VestoraInHouseVTONManager {
 
   disconnect() {
     inHouseVton.reset();
+    poseTracker.reset();
     showToast("In-House Engine Reset");
   }
 }
@@ -569,6 +573,8 @@ function resizeCanvas() {
 }
 
 function flipCamera() {
+  inHouseVton.reset();
+  poseTracker.reset();
   const newFacing = currentFacing === "user" ? "environment" : "user";
   initCamera(newFacing);
 }
@@ -597,19 +603,22 @@ function startRenderLoop() {
     lastFrameTime = timestamp;
 
     // Camera-only render path
-    if (!isBodyDetected || !videoEl.videoWidth) return;
+    if (!videoEl.videoWidth || !videoEl.videoHeight) return;
+    if (!isBodyDetected) isBodyDetected = true;
 
+    // Run continuous real-time optical & anatomical body tracking directly on live camera stream
+    const liveTrack = poseTracker.track(videoEl, canvasEl.width, canvasEl.height);
+    const smoothedPose = {
+      landmarks: liveTrack.landmarks,
+      confidence: liveTrack.confidence,
+      timestamp: liveTrack.timestamp,
+      shoulderAngle: liveTrack.shoulderAngle,
+      shoulderWidth: liveTrack.shoulderWidth,
+      torsoCenter: liveTrack.torsoCenter,
+    };
 
-    // Run pose estimation (baseline geometric with 19 landmarks)
-    const pose = estimateBasePose(videoEl.videoWidth, videoEl.videoHeight);
-
-    // Temporal smoothing
-    poseHistory.push(pose);
-    if (poseHistory.length > MAX_POSE_HISTORY) poseHistory.shift();
-    const smoothedPose = smoothPose(poseHistory);
-
-    // Update body measurements from pose
-    updateMeasurements(smoothedPose, videoEl.videoWidth, videoEl.videoHeight);
+    // Update body measurements from continuously tracked pose
+    updateMeasurements(smoothedPose, canvasEl.width, canvasEl.height);
 
     // Clear canvas for fresh frame
     ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
