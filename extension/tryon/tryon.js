@@ -166,6 +166,11 @@ const garmentLoader = document.getElementById("garment-loader");
 const perfHud = document.getElementById("perf-hud");
 const perfFps = document.getElementById("perf-fps");
 const perfLatency = document.getElementById("perf-latency");
+const trackingHudPill = document.getElementById("tracking-hud-pill");
+const hudTrackingText = document.getElementById("hud-tracking-text");
+const hudCutoutText = document.getElementById("hud-cutout-text");
+const distanceGuidePill = document.getElementById("distance-guide-pill");
+const distanceGuideText = document.getElementById("distance-guide-text");
 
 // Product info & Samples
 const productThumb = document.getElementById("product-thumb");
@@ -620,6 +625,22 @@ function startRenderLoop() {
     // Update body measurements from continuously tracked pose
     updateMeasurements(smoothedPose, canvasEl.width, canvasEl.height);
 
+    // Live distance guidance & HUD status
+    if (liveTrack.framingStatus === "close_up") {
+      distanceGuidePill?.classList.remove("hidden");
+      if (distanceGuideText) distanceGuideText.textContent = "💡 Sit back slightly for full shirt view";
+    } else {
+      distanceGuidePill?.classList.add("hidden");
+    }
+
+    if (hudTrackingText) {
+      if (liveTrack && liveTrack.isDetected) {
+        hudTrackingText.textContent = `✦ REAL-TIME TRACKING (${liveTrack.framingStatus === "close_up" ? "PORTRAIT" : "FULL BODY"})`;
+      } else {
+        hudTrackingText.textContent = `✦ REAL-TIME TRACKING (SEARCHING BODY)`;
+      }
+    }
+
     // Clear canvas for fresh frame
     ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
     const isMirrored = currentFacing === "user" && currentInputMode === "camera";
@@ -681,47 +702,7 @@ if (RT_VTON_SUPPORTED.includes(garmentItem.garmentCategory)) {
   animationFrameId = requestAnimationFrame(frame);
 }
 
-// ─── Dynamic Webcam Pose Estimation & Torso Tracking ───
 
-let trackerCanvas = null;
-let trackerCtx = null;
-function estimateBasePose(width, height) {
-  // Stable, realistic webcam anatomy (desktop / laptop sitting frame)
-  const headCenterX = width * 0.50;
-  const noseY = height * 0.38;
-  const eyeY = height * 0.32;
-  const neckY = height * 0.52;                       // Collarbone / neckline
-  const shoulderY = height * 0.60;                   // Natural shoulder level
-  const shoulderHalfWidth = width * 0.31;            // Total shoulder span ~62% of frame
-  const torsoHeight = height * 0.39;                 // Natural torso height
-  const hipY = Math.min(height * 0.98, shoulderY + torsoHeight);
-
-  return {
-    landmarks: [
-      { x: headCenterX, y: noseY, v: 0.95 },                         // 0: Nose
-      { x: headCenterX - width * 0.06, y: eyeY, v: 0.95 },          // 1: L Eye
-      { x: headCenterX + width * 0.06, y: eyeY, v: 0.95 },          // 2: R Eye
-      { x: headCenterX - width * 0.12, y: noseY, v: 0.90 },         // 3: L Ear
-      { x: headCenterX + width * 0.12, y: noseY, v: 0.90 },         // 4: R Ear
-      { x: headCenterX - shoulderHalfWidth, y: shoulderY, v: 0.95 },// 5: L Shoulder
-      { x: headCenterX + shoulderHalfWidth, y: shoulderY, v: 0.95 },// 6: R Shoulder
-      { x: headCenterX - shoulderHalfWidth * 1.15, y: shoulderY + torsoHeight * 0.5, v: 0.88 }, // 7: L Elbow
-      { x: headCenterX + shoulderHalfWidth * 1.15, y: shoulderY + torsoHeight * 0.5, v: 0.88 }, // 8: R Elbow
-      { x: headCenterX - shoulderHalfWidth * 1.25, y: shoulderY + torsoHeight * 0.85, v: 0.86 },// 9: L Wrist
-      { x: headCenterX + shoulderHalfWidth * 1.25, y: shoulderY + torsoHeight * 0.85, v: 0.86 },// 10: R Wrist
-      { x: headCenterX - shoulderHalfWidth * 0.85, y: hipY, v: 0.85 }, // 11: L Hip
-      { x: headCenterX + shoulderHalfWidth * 0.85, y: hipY, v: 0.85 }, // 12: R Hip
-      { x: headCenterX - shoulderHalfWidth * 0.8, y: height * 0.98, v: 0.80 }, // 13: L Knee
-      { x: headCenterX + shoulderHalfWidth * 0.8, y: height * 0.98, v: 0.80 }, // 14: R Knee
-      { x: headCenterX - shoulderHalfWidth * 0.8, y: height * 1.0, v: 0.78 },  // 15: L Ankle
-      { x: headCenterX + shoulderHalfWidth * 0.8, y: height * 1.0, v: 0.78 },  // 16: R Ankle
-      { x: headCenterX, y: height * 0.20, v: 0.92 },                 // 17: Head Crown
-      { x: headCenterX, y: neckY, v: 0.95 },                         // 18: Neck / Collarbone
-    ],
-    confidence: 0.96,
-    timestamp: performance.now(),
-  };
-}
 
 function smoothPose(history) {
   if (history.length === 0) return null;
@@ -1905,6 +1886,10 @@ function loadDirectImage(item) {
       processedGarmentCanvas = cutout;
     }
 
+    if (hudCutoutText) {
+      hudCutoutText.textContent = cutout ? "✦ FLOOD-FILL CUTOUT (NEW)" : "RAW TEXTURE";
+    }
+
     renderOutfitLayersList();
     showToast(`✦ Added ${item.name.slice(0, 24)}… to live try-on!`);
     updateSizePills(recommendedSizeValue?.textContent || "M");
@@ -1920,6 +1905,9 @@ function loadDirectImage(item) {
           item.processedCanvas = aiImg;
           if (currentProduct?.id === item.id) {
             processedGarmentCanvas = aiImg;
+          }
+          if (hudCutoutText) {
+            hudCutoutText.textContent = "✦ AI-EXTRACTED CUTOUT";
           }
           renderOutfitLayersList();
         };
@@ -1952,6 +1940,11 @@ function loadItemViaBgFetch(item) {
               garmentImage = img;
               processedGarmentCanvas = item.processedCanvas;
             }
+
+            if (hudCutoutText) {
+              hudCutoutText.textContent = item.processedCanvas ? "✦ FLOOD-FILL CUTOUT (NEW)" : "RAW TEXTURE";
+            }
+
             renderOutfitLayersList();
             showToast(`✦ Applied ${item.name.slice(0, 24)}… to your body!`);
             updateSizePills(recommendedSizeValue?.textContent || "M");
@@ -1967,6 +1960,9 @@ function loadItemViaBgFetch(item) {
                   item.processedCanvas = aiImg;
                   if (currentProduct?.id === item.id) {
                     processedGarmentCanvas = aiImg;
+                  }
+                  if (hudCutoutText) {
+                    hudCutoutText.textContent = "✦ AI-EXTRACTED CUTOUT";
                   }
                   renderOutfitLayersList();
                 };

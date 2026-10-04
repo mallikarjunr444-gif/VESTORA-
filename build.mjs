@@ -57,10 +57,14 @@ async function build() {
     }
   }
 
-  // Copy MediaPipe pose wasm assets
+  // Copy MediaPipe pose wasm assets & tasks-vision wasm assets
   const mediapipePoseDir = path.resolve("node_modules/@mediapipe/pose");
   if (fs.existsSync(mediapipePoseDir)) {
     await copyDir(mediapipePoseDir, "dist/mediapipe/wasm");
+  }
+  const tasksVisionWasm = path.resolve("node_modules/@mediapipe/tasks-vision/wasm");
+  if (fs.existsSync(tasksVisionWasm)) {
+    await copyDir(tasksVisionWasm, "dist/mediapipe/wasm");
   }
 
   // 3. Shared esbuild options
@@ -134,8 +138,11 @@ async function build() {
   await copyDir("dist/styles", "styles");
   await copyDir("dist/tryon", "tryon");
   await copyDir("dist/assets", "assets");
-  if (fs.existsSync("dist/mediapipe/wasm")) {
-    await copyDir("dist/mediapipe/wasm", "mediapipe/wasm");
+  if (fs.existsSync("dist/mediapipe")) {
+    await copyDir("dist/mediapipe", "mediapipe");
+  }
+  if (fs.existsSync("dist/models")) {
+    await copyDir("dist/models", "models");
   }
 
   // Clean out legacy files that referenced external Decart / Anywear URLs

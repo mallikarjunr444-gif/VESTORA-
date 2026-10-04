@@ -43,6 +43,8 @@ interface MeshTriangle {
 export class InHouseVTONEngine {
   private smoothedVertices: Map<string, { x: number; y: number }> = new Map();
   private prevTimestamp: number = 0;
+  // When the preview canvas is CSS-mirrored, flip the texture too so logos/text stay readable
+  private flipU = false;
   private tempCanvas: HTMLCanvasElement | null = null;
   private tempCtx: CanvasRenderingContext2D | null = null;
 
@@ -75,6 +77,7 @@ export class InHouseVTONEngine {
       enableArmOcclusion = true,
       isMirrored = false,
     } = options;
+    this.flipU = !!isMirrored;
 
     // 1. Build anatomical deformation mesh anchored to body keypoints
     const { vertices, triangles } = this.buildAnatomicalMesh(
@@ -166,7 +169,7 @@ export class InHouseVTONEngine {
       const cy = shoulderMidY + spineDy * t + appliedOffsetY;
 
       // Perpendicular vector for horizontal width
-      const normalAngle = Math.atan2(spineDy, spineDx) + Math.PI / 2;
+      const normalAngle = Math.atan2(spineDy, spineDx) - Math.PI / 2;
       const nx = Math.cos(normalAngle);
       const ny = Math.sin(normalAngle);
 
@@ -196,7 +199,7 @@ export class InHouseVTONEngine {
         const vx = cx + nx * (s * rSpan);
         const vy = cy + ny * (s * rSpan) + extraY + depthSag;
 
-        vertices.push({ u, v, x: vx, y: vy });
+        vertices.push({ u: this.flipU ? 1 - u : u, v, x: vx, y: vy });
       }
     }
 
@@ -238,7 +241,7 @@ export class InHouseVTONEngine {
     const lUpperArmDy = lElbow.y - lShoulder.y;
     const lSleeveEndIdx = vertices.length;
     vertices.push({
-      u: 0.0,
+      u: this.flipU ? 1.0 : 0.0,
       v: 0.35,
       x: lShoulder.x + lUpperArmDx * 0.45,
       y: lShoulder.y + lUpperArmDy * 0.45,
@@ -255,7 +258,7 @@ export class InHouseVTONEngine {
     const rUpperArmDy = rElbow.y - rShoulder.y;
     const rSleeveEndIdx = vertices.length;
     vertices.push({
-      u: 1.0,
+      u: this.flipU ? 0.0 : 1.0,
       v: 0.35,
       x: rShoulder.x + rUpperArmDx * 0.45,
       y: rShoulder.y + rUpperArmDy * 0.45,

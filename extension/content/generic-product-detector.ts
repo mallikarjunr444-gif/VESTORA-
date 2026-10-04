@@ -662,10 +662,15 @@ export function detectHeroFashionProduct(doc: Document = document, loc: Location
 
   // 2. OpenGraph / Microdata Fallback
   if (!name) {
-    name =
+    const rawTitle =
       doc.querySelector('meta[property="og:title"]')?.getAttribute("content") ||
       doc.querySelector("h1")?.textContent?.trim() ||
       doc.title.split(/[-|·]/)[0].trim();
+    // Do not treat broad catalog / category listing page titles as single products
+    const isCategoryTitle = /^(?:shop\s+for|buy\s+online|online\s+shopping|men'?s\s+clothing|women'?s\s+clothing|all\s+products|browse|sale\b|new\s+arrivals)/i.test(rawTitle);
+    if (!isCategoryTitle) {
+      name = rawTitle;
+    }
   }
 
   if (!brand) {

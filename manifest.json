@@ -45,7 +45,10 @@
         "tryon/tryon.js",
         "tryon/permission.html",
         "models/pose_landmarker_lite.task",
-        "models/selfie_multiclass_256x256.tflite"
+        "models/selfie_multiclass_256x256.tflite",
+        "mediapipe/wasm/pose_solution_wasm_bin.wasm",
+        "mediapipe/wasm/pose_solution_simd_wasm_bin.wasm",
+        "mediapipe/wasm/pose.js"
       ],
       "matches": ["<all_urls>"]
     }

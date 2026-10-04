@@ -61,6 +61,20 @@
       <!-- Garment overlay canvas (layered on top) -->
       <canvas id="garment-canvas" class="garment-canvas"></canvas>
 
+      <!-- Live Real-Time Tracking HUD Badge -->
+      <div id="tracking-hud-pill" class="tracking-hud-pill">
+        <span class="hud-dot"></span>
+        <span id="hud-tracking-text">✦ LIVE OPTICAL TRACKING: 60 FPS</span>
+        <span class="hud-divider">·</span>
+        <span id="hud-cutout-text">FLOOD-FILL ALPHA</span>
+      </div>
+
+      <!-- Distance Guidance Notification (shows if sitting too close) -->
+      <div id="distance-guide-pill" class="distance-guide-pill hidden">
+        <span class="guide-icon">💡</span>
+        <span id="distance-guide-text">Sit back slightly for full shirt view</span>
+      </div>
+
       <!-- Drag & Drop Overlay Target -->
       <div id="drop-zone-overlay" class="drop-zone-overlay hidden">
         <div class="drop-zone-card">

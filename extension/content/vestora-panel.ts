@@ -1175,9 +1175,13 @@ function startRenderLoop() {
 
     const videoSource = (videoEl && videoEl.videoWidth) ? videoEl : canvasEl;
     const liveTrack = poseTracker.track(videoSource, w, h);
-    if (liveTrack.isBodyDetected && !isBodyDetected) {
+    if (liveTrack.framingStatus === "close_up") {
+      setDetectRing(true, "💡 Sit back slightly for full view");
+    } else if (liveTrack.isBodyDetected) {
       isBodyDetected = true;
-      setDetectRing(false, "Body Detected");
+      setDetectRing(false, `✦ Live Tracking (${liveTrack.framingStatus === "far" ? "Full Body" : "Torso"})`);
+    } else {
+      setDetectRing(true, "Looking for body…");
     }
 
     const pose = {
@@ -1188,25 +1192,6 @@ function startRenderLoop() {
     renderAllLayers(pose, w, h, currentFacing === "user" && !!cameraStream);
   }
   animFrameId = requestAnimationFrame(frame);
-}
-
-// ── Pose ───────────────────────────────────────────────────────────────────
-
-function estimatePose(width: number, height: number) {
-  const ey=height*.15, ny=height*.18, cy=height*.08, nky=height*.25;
-  const sy=height*.31, ely=height*.49, wy=height*.62;
-  const hy=height*.64, ky=height*.82, ay=height*.96;
-  return { landmarks: [
-    {x:width*.50,y:ny},{x:width*.46,y:ey},{x:width*.54,y:ey},
-    {x:width*.40,y:ny},{x:width*.60,y:ny},
-    {x:width*.37,y:sy},{x:width*.63,y:sy},
-    {x:width*.29,y:ely},{x:width*.71,y:ely},
-    {x:width*.24,y:wy},{x:width*.76,y:wy},
-    {x:width*.40,y:hy},{x:width*.60,y:hy},
-    {x:width*.41,y:ky},{x:width*.59,y:ky},
-    {x:width*.42,y:ay},{x:width*.58,y:ay},
-    {x:width*.50,y:cy},{x:width*.50,y:nky},
-  ]};
 }
 
 // ── Garment Rendering ──────────────────────────────────────────────────────
