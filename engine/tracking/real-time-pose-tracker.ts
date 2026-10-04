@@ -36,6 +36,8 @@ export interface LivePoseTrackResult {
   shoulderWidth: number;
   torsoCenter: { x: number; y: number };
   measurements: BodyMeasurements;
+  framingStatus: "close_up" | "ideal" | "far";
+  statusText: string;
 }
 
 export class RealTimePoseTracker {
@@ -115,6 +117,20 @@ export class RealTimePoseTracker {
 
     const measurements = this.computeBodyMeasurements(smoothed, w, h);
 
+    // Calculate framing status
+    const headHeight = Math.abs(smoothed[0].y - smoothed[17].y) * 2;
+    const headHeightRatio = headHeight / h;
+    let framingStatus: "close_up" | "ideal" | "far" = "ideal";
+    let statusText = "✦ Optical Tracking: 60 FPS · Active";
+
+    if (headHeightRatio > 0.40) {
+      framingStatus = "close_up";
+      statusText = "💡 Sit back slightly for full shirt view";
+    } else if (headHeightRatio < 0.12) {
+      framingStatus = "far";
+      statusText = "Step closer for detailed fit";
+    }
+
     return {
       landmarks: smoothed,
       confidence,
@@ -124,6 +140,8 @@ export class RealTimePoseTracker {
       shoulderWidth,
       torsoCenter,
       measurements,
+      framingStatus,
+      statusText,
     };
   }
 
@@ -196,14 +214,22 @@ export class RealTimePoseTracker {
       headNormY = 0.35;
     }
 
-    // 2. Scan for shoulder boundaries below the head
-    const shoulderRowNormY = Math.min(0.85, headNormY + headHeightNorm * 0.95);
+    // 2. Anatomical anchor calculations:
+    // Human face: headNormY is nose/eyes level.
+    // Chin is at headNormY + headHeightNorm * 0.46
+    // Neck / collarbone notch is at headNormY + headHeightNorm * 0.54
+    // Clavicles / shoulder line is at headNormY + headHeightNorm * 0.62
+    const isCloseUp = headHeightNorm >= 0.22;
+    const neckNormY = Math.min(0.66, headNormY + headHeightNorm * 0.54);
+    const shoulderRowNormY = Math.min(0.72, headNormY + headHeightNorm * 0.62);
     const shoulderRowY = Math.floor(shoulderRowNormY * ah);
 
     // Look for body silhouette edges left and right from head center
     const centerCol = Math.floor(headNormX * aw);
-    let leftShoulderCol = Math.max(2, centerCol - Math.floor(headWidthNorm * 1.5 * aw));
-    let rightShoulderCol = Math.min(aw - 3, centerCol + Math.floor(headWidthNorm * 1.5 * aw));
+    // Shoulder span in human anatomy is ~2.3-2.5x head width
+    const expectedHalfSpan = Math.max(aw * 0.16, Math.min(aw * 0.38, headWidthNorm * 1.25 * aw));
+    let leftShoulderCol = Math.max(2, centerCol - Math.floor(expectedHalfSpan));
+    let rightShoulderCol = Math.min(aw - 3, centerCol + Math.floor(expectedHalfSpan));
 
     // Contrast search for shoulder silhouette
     const sampleY = Math.min(ah - 4, Math.max(4, shoulderRowY));
@@ -237,8 +263,8 @@ export class RealTimePoseTracker {
     }
 
     // Guard rails for shoulder width
-    const minSpan = aw * 0.28;
-    const maxSpan = aw * 0.76;
+    const minSpan = aw * 0.32;
+    const maxSpan = aw * 0.82;
     let span = rightShoulderCol - leftShoulderCol;
     if (span < minSpan) {
       const pad = (minSpan - span) / 2;
@@ -269,7 +295,7 @@ export class RealTimePoseTracker {
     const lsX = (leftShoulderCol / aw) * targetWidth;
     const rsX = (rightShoulderCol / aw) * targetWidth;
     const shoulderY = shoulderRowNormY * targetHeight;
-    const neckY = (shoulderRowNormY - 0.08) * targetHeight;
+    const neckY = neckNormY * targetHeight;
     const neck = { x: (lsX + rsX) / 2, y: neckY, v: 0.96 };
 
     // Check slight vertical variation in shoulders (tilt)
@@ -278,7 +304,10 @@ export class RealTimePoseTracker {
 
     // 5. Torso, Hips & Spine
     const torsoSpan = Math.abs(rsX - lsX);
-    const torsoHeight = torsoSpan * 1.18;
+    // In close-up sitting view, ensure torso extends to fill visible chest down to frame bottom
+    const torsoHeight = isCloseUp
+      ? Math.max(targetHeight * 0.36, (targetHeight - shoulderY) * 0.95)
+      : torsoSpan * 1.20;
     const hipY = Math.min(targetHeight * 0.98, shoulderY + torsoHeight);
     const hipHalfSpan = torsoSpan * 0.44;
     const spineCenterX = (lsX + rsX) / 2;
