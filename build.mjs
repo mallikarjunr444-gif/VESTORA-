@@ -118,6 +118,8 @@ async function build() {
   const engineBuild = esbuild.build({
     entryPoints: {
       "rendering/in-house-vton": "engine/rendering/in-house-vton.ts",
+      "rendering/catv2ton-engine": "engine/rendering/catv2ton-engine.ts",
+      "rendering/index": "engine/rendering/index.ts",
       "segmentation/index": "engine/segmentation/index.ts",
       "tracking/index": "engine/tracking/index.ts",
       "tracking/real-time-pose-tracker": "engine/tracking/real-time-pose-tracker.ts",

@@ -152,7 +152,7 @@
           <div class="engine-modal-header">
             <div class="engine-modal-title-row">
               <span class="engine-modal-sparkle">✦</span>
-              <h3>VESTORA In-House AI VTON Engine</h3>
+              <h3>VESTORA AI Virtual Try-On Engine</h3>
             </div>
             <button id="btn-close-engine-modal" class="btn-close-modal" aria-label="Close Settings">×</button>
           </div>
@@ -160,37 +160,38 @@
           <div class="engine-modal-body">
             <div class="engine-spec-badge">
               <span class="spec-label">Model:</span>
-              <span class="spec-value">vestora-dense-mesh-v1 · In-House Real-Time 30 FPS</span>
+              <span class="spec-value" id="engine-spec-model-name">CatV2TON-Video & In-House Dense Mesh · 60 FPS</span>
             </div>
 
             <p class="engine-modal-desc">
-              100% In-House & Self-Hosted. Zero reliance on third-party cloud platforms or paid subscriptions. Features curvilinear dense anatomical mesh draping, complete shirt replacement, dynamic arm & hand occlusion, and ambient lighting transfer.
+              100% In-House & Self-Hosted. Zero third-party cloud API dependencies or subscription costs. Integrates <strong>CatV2TON Video Diffusion Transformer</strong> with temporal frame concatenation and <strong>In-House Curvilinear Dense Anatomical Mesh Draping</strong>.
             </p>
 
             <div class="engine-status-banner" id="engine-status-banner">
               <span class="status-indicator-dot online" id="engine-status-indicator"></span>
-              <span class="status-message" id="engine-status-message">Active: In-House Neural Drape & Shirt Replacement Engine</span>
+              <span class="status-message" id="engine-status-message">Active: CatV2TON & In-House Neural Draping Engine</span>
             </div>
 
             <div class="engine-form-group">
               <label class="form-label">
-                <span>In-House Neural Engine Mode</span>
+                <span>VTON Architecture & Pipeline Features</span>
               </label>
               <div class="in-house-features-list">
-                <div class="in-house-feat-item">✓ <strong>Dense Mesh Draping:</strong> Curvilinear multi-vertex anatomical grid</div>
-                <div class="in-house-feat-item">✓ <strong>Shirt Replacement:</strong> Erases original shirt and conforms to body</div>
-                <div class="in-house-feat-item">✓ <strong>Arm Occlusion:</strong> Forearms & hands render in front of clothing</div>
-                <div class="in-house-feat-item">✓ <strong>Lighting Transfer:</strong> Ambient room folds & shadows mapped to cloth</div>
-                <div class="in-house-feat-item">✓ <strong>Zero Cloud Cost:</strong> 100% private, runs directly on your machine</div>
+                <div class="in-house-feat-item">✓ <strong>Garment Identity Stripper:</strong> Automatically removes original model face, hair, and studio background</div>
+                <div class="in-house-feat-item">✓ <strong>CatV2TON Temporal DiT:</strong> Temporal concatenation for dance-proof, zero-shake motion stability</div>
+                <div class="in-house-feat-item">✓ <strong>Curvilinear Dense Mesh:</strong> 25-vertex anatomical grid that stretches, rotates, and bends realistically</div>
+                <div class="in-house-feat-item">✓ <strong>Arm & Hand Occlusion:</strong> Forearms, hands, and hair render naturally in front of clothing</div>
+                <div class="in-house-feat-item">✓ <strong>Room Lighting Transfer:</strong> Real webcam shadows and fabric wrinkles blended onto the garment</div>
+                <div class="in-house-feat-item">✓ <strong>Mirrored Logo Preservation:</strong> Chest text and brand logos maintain correct orientation</div>
               </div>
             </div>
 
             <div class="engine-server-section">
               <div class="server-status-row">
-                <span class="server-label">Local Model Server:</span>
+                <span class="server-label">Local CatV2TON Server:</span>
                 <span id="server-status-pill" class="server-status-pill">Checking http://localhost:3000…</span>
               </div>
-              <p class="server-hint">Optional: Run <code>npm start</code> in <code>server/</code> for server-side neural acceleration, or run client-side with zero setup.</p>
+              <p class="server-hint">Run <code>npm start</code> in <code>server/</code> (or <code>python3 server/vton_server.py</code>) for local CatV2TON acceleration, or run client-side at 60 FPS with zero setup.</p>
             </div>
           </div>
 

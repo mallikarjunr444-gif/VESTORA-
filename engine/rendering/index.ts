@@ -5,6 +5,7 @@
  */
 
 export * from "./in-house-vton.js";
+export * from "./catv2ton-engine.js";
 
 export interface RenderContext {
   canvas: HTMLCanvasElement;

@@ -8,6 +8,8 @@
     "dev": "node build.mjs --watch",
     "typecheck": "tsc --noEmit",
     "test": "node tests/foundation.test.js && node test/test-dom-scanners.js && node test/test-generic-detector.js && node test/test-google-images-and-outfit.js && node tests/in-house-vton.test.js",
+    "server": "node server/server.js",
+    "vton": "python3 server/vton_server.py",
     "models": "node scripts/fetch-models.mjs"
   },
   "devDependencies": {

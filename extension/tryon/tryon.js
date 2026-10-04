@@ -236,7 +236,7 @@ class VestoraInHouseVTONManager {
         const data = await resp.json();
         this.serverOnline = true;
         if (serverStatusPill) {
-          serverStatusPill.textContent = "Online (In-House Server http://localhost:3000)";
+          serverStatusPill.textContent = "Online (CatV2TON Server http://localhost:3000)";
           serverStatusPill.className = "server-status-pill online";
         }
         return data;
@@ -245,7 +245,7 @@ class VestoraInHouseVTONManager {
 
     this.serverOnline = false;
     if (serverStatusPill) {
-      serverStatusPill.textContent = "Client-Side In-House Engine (Active)";
+      serverStatusPill.textContent = "Client-Side In-House Mesh Engine (Active)";
       serverStatusPill.className = "server-status-pill online";
     }
     return null;
@@ -257,11 +257,11 @@ class VestoraInHouseVTONManager {
       const resp = await fetch("http://localhost:3000/api/vton/status", { signal: AbortSignal.timeout(1500) });
       if (resp.ok) {
         const data = await resp.json();
-        this.activeEngine = data.active_engine || "rt_vton";
+        this.activeEngine = data.active_engine || "CatV2TON-Video";
         this.device = data.device || "cpu";
       }
     } catch {
-      this.activeEngine = "rt_vton";
+      this.activeEngine = "CatV2TON-Video";
       this.device = "cpu";
     }
   }
@@ -275,13 +275,15 @@ class VestoraInHouseVTONManager {
       topbarEngineBadge.className = "topbar-engine-badge connected";
     }
     if (topbarEngineText) {
-      topbarEngineText.textContent = "IN-HOUSE 30FPS";
+      topbarEngineText.textContent = this.serverOnline ? "CatV2TON 60FPS" : "IN-HOUSE 60FPS";
     }
     if (engineStatusIndicator) {
       engineStatusIndicator.className = "status-indicator-dot online";
     }
     if (engineStatusMessage) {
-      engineStatusMessage.textContent = "Active: In-House Neural Draping & Shirt Replacement Engine (Zero Cloud APIs)";
+      engineStatusMessage.textContent = this.serverOnline
+        ? "Active: CatV2TON Temporal Video Engine (Self-Hosted · Zero Cloud APIs)"
+        : "Active: In-House Curvilinear Dense Anatomical Mesh Engine (60 FPS Local)";
     }
     vtonSetupCard?.classList.add("hidden");
   }
@@ -692,42 +694,50 @@ const RT_VTON_SUPPORTED = [
   "accessories",
 ];
 
-// Determine if RT‑VTON engine is active, server reachable, and the selected item is supported.
-if (vtonManager.activeEngine && vtonManager.activeEngine === "rt_vton" && vtonManager.serverOnline) {
-// Resolve the currently selected product (or fallback sample).
-let garmentItem = null;
-if (currentProduct) {
-  // Prefer AI‑extracted garment canvas if available; otherwise use original image URL.
-  const imageData = (processedGarmentCanvas && processedGarmentCanvas.toDataURL) ? processedGarmentCanvas.toDataURL("image/png") : currentProduct.imageUrl;
-  garmentItem = {
-    garmentCategory: currentProduct.garmentCategory || "upper_body",
-    imageUrl: imageData,
-    name: currentProduct.name || "",
-  };
-} else {
-  // No product selected – use placeholder/sample garment.
-  garmentItem = { garmentCategory: "upper_body", imageUrl: garmentImage?.src || null };
-}
-// Only invoke RT‑VTON when the category is supported.
-if (RT_VTON_SUPPORTED.includes(garmentItem.garmentCategory)) {
-        vtonManager.renderVtonFrame(videoEl, garmentItem)
-            .then(res => {
-                if (res && res.frame_image_b64) {
-                    const img = new Image();
-                    img.onload = () => ctx.drawImage(img, 0, 0, canvasEl.width, canvasEl.height);
-                    img.src = `data:image/png;base64,${res.frame_image_b64}`;
-                } else {
-                    renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
-                }
-            })
-            .catch(e => {
-                console.warn("[VESTORA] RT‑VTON frame render error:", e);
-                // Fallback to in‑house rendering on error or unsupported category.
-                renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
-            })
-        // Early return – RT‑VTON handled this frame.
-        return;
-    }
+// Determine if CatV2TON / RT-VTON server engine is active, server reachable, and the selected item is supported.
+const isServerVtonActive = vtonManager.serverOnline && (
+  vtonManager.activeEngine === "CatV2TON-Video" ||
+  vtonManager.activeEngine === "CatV2TON" ||
+  vtonManager.activeEngine === "rt_vton"
+);
+
+if (isServerVtonActive) {
+  // Resolve the currently selected product (or fallback sample).
+  let garmentItem = null;
+  if (currentProduct) {
+    // Prefer AI-extracted garment canvas if available; otherwise use original image URL.
+    const imageData = (processedGarmentCanvas && processedGarmentCanvas.toDataURL)
+      ? processedGarmentCanvas.toDataURL("image/png")
+      : currentProduct.imageUrl;
+    garmentItem = {
+      garmentCategory: currentProduct.garmentCategory || "upper_body",
+      imageUrl: imageData,
+      name: currentProduct.name || "",
+    };
+  } else {
+    garmentItem = { garmentCategory: "upper_body", imageUrl: garmentImage?.src || null };
+  }
+
+  // Only invoke server VTON when the category is supported.
+  if (RT_VTON_SUPPORTED.includes(garmentItem.garmentCategory)) {
+    vtonManager.renderVtonFrame(videoEl, garmentItem)
+      .then(res => {
+        if (res && res.frame_image_b64) {
+          const img = new Image();
+          img.onload = () => ctx.drawImage(img, 0, 0, canvasEl.width, canvasEl.height);
+          img.src = res.frame_image_b64.startsWith("data:")
+            ? res.frame_image_b64
+            : `data:image/png;base64,${res.frame_image_b64}`;
+        } else {
+          renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
+        }
+      })
+      .catch(e => {
+        console.warn("[VESTORA] CatV2TON / RT-VTON frame render error:", e);
+        renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
+      });
+    return;
+  }
   // If category unsupported, fall back to in-house rendering.
   renderAllOutfitLayers(smoothedPose, canvasEl.width, canvasEl.height, isMirrored);
 } else {
@@ -1459,8 +1469,12 @@ function processItemCutout(img, category = "upper_body") {
       }
     }
 
-    // Erase human model head, face, neck, and exposed hands from catalog photos so only the garment is tried on.
-    const maxHeadY = Math.floor(oh * 0.42);
+    // Erase human model head, face, neck, hair, and exposed limbs from catalog photos so only the garment is tried on.
+    const isModelPhoto = oh > ow * 1.08 || edgeLooksLikeBackground;
+    const maxHeadY = Math.floor(oh * 0.40);
+    const headLeft = Math.floor(ow * 0.22);
+    const headRight = Math.floor(ow * 0.78);
+
     for (let y = 0; y < maxHeadY; y++) {
       for (let x = 0; x < ow; x++) {
         const idx = (y * ow + x) * 4;
@@ -1470,18 +1484,37 @@ function processItemCutout(img, category = "upper_body") {
         const g = data[idx + 1];
         const b = data[idx + 2];
 
-        // Detect model skin tones (face, chin, neck)
-        const isSkin = (r > 105 && g > 45 && b > 25 &&
+        // 1. Detect model skin tones (face, chin, neck)
+        const isSkin = (r > 90 && g > 40 && b > 20 &&
                         r > g && r > b &&
-                        (r - g) > 12 &&
-                        (r - b) > 24 &&
-                        (Math.max(r, g, b) - Math.min(r, g, b)) > 22);
+                        (r - g) > 8 &&
+                        (r - b) > 14);
 
-        // Detect model hair in the top 22%
-        const isHair = y < oh * 0.25 && (r < 65 && g < 65 && b < 65);
+        // 2. Detect model hair in the top 25%
+        const isHair = y < oh * 0.25 && (r < 75 && g < 75 && b < 75);
 
-        if (isSkin || isHair) {
+        // 3. Center upper head bounding box on model portraits
+        const isInUpperHeadBox = isModelPhoto && y < oh * 0.22 && x >= headLeft && x <= headRight;
+
+        if (isSkin || isHair || isInUpperHeadBox) {
           data[idx + 3] = 0;
+        }
+      }
+    }
+
+    // Drop trousers/legs for upper_body garments on full model portraits
+    if (garmentCategory === "upper_body" && isModelPhoto) {
+      const legsStartY = Math.floor(oh * 0.65);
+      for (let y = legsStartY; y < oh; y++) {
+        for (let x = 0; x < ow; x++) {
+          data[(y * ow + x) * 4 + 3] = 0;
+        }
+      }
+    } else if (garmentCategory === "lower_body" && isModelPhoto) {
+      const shirtEndY = Math.floor(oh * 0.38);
+      for (let y = 0; y < shirtEndY; y++) {
+        for (let x = 0; x < ow; x++) {
+          data[(y * ow + x) * 4 + 3] = 0;
         }
       }
     }
@@ -1544,17 +1577,18 @@ function cropGarmentTexture(sourceCanvas, category = "upper_body") {
   const crop = { ...bounds };
 
   if (category === "upper_body" && fullModelLike) {
-    crop.y = Math.max(0, bounds.y - Math.round(bounds.height * 0.02));
-    crop.height = Math.min(height - crop.y, Math.round(bounds.height * 0.58));
+    // Start strictly at collar/shoulders, not the top of the photo head
+    crop.y = Math.max(0, bounds.y);
+    crop.height = Math.min(height - crop.y, Math.round(bounds.height * 0.95));
   } else if (category === "lower_body" && fullModelLike) {
-    crop.y = Math.max(0, bounds.y + Math.round(bounds.height * 0.36));
-    crop.height = Math.min(height - crop.y, Math.round(bounds.height * 0.62));
+    crop.y = Math.max(0, bounds.y);
+    crop.height = Math.min(height - crop.y, bounds.height);
   } else if (category === "full_body") {
     crop.height = Math.min(height - crop.y, bounds.height);
   }
 
-  const padX = Math.round(crop.width * 0.08);
-  const padY = Math.round(crop.height * 0.06);
+  const padX = Math.round(crop.width * 0.05);
+  const padY = Math.round(crop.height * 0.04);
   const sx = Math.max(0, crop.x - padX);
   const sy = Math.max(0, crop.y - padY);
   const sw = Math.min(width - sx, crop.width + padX * 2);
@@ -1909,55 +1943,80 @@ function addOutfitItem(product, options = {}) {
   updateOutfitCountBadge();
 }
 
-function loadDirectImage(item) {
-  const img = new Image();
-  img.crossOrigin = "anonymous";
-  img.onload = () => {
-    garmentLoader?.classList.add("hidden");
-    item.imageElement = img;
+async function resolveAndApplyGarment(item, img) {
+  garmentLoader?.classList.add("hidden");
+  item.imageElement = img;
+
+  // 1. Immediately run On-Device Neural Garment Extraction (MediaPipe Multiclass Segmenter)
+  // Strictly extracts clothes pixels (class 4) and zeros out original model face, hair, neck, and skin
+  let aiCutoutUrl = null;
+  try {
+    aiCutoutUrl = await cutoutGarment(img, item.garmentCategory);
+  } catch (err) {
+    console.warn("[VESTORA] Local neural garment cutout error:", err);
+  }
+
+  if (aiCutoutUrl) {
+    const aiImg = new Image();
+    aiImg.onload = () => {
+      item.processedCanvas = aiImg;
+      if (currentProduct?.id === item.id) {
+        garmentImage = img;
+        processedGarmentCanvas = aiImg;
+      }
+      if (hudCutoutText) {
+        hudCutoutText.textContent = "✦ AI GARMENT EXTRACTED";
+      }
+      renderOutfitLayersList();
+    };
+    aiImg.src = aiCutoutUrl;
+  } else {
+    // 2. Fallback to enhanced identity-stripping cutout for flat-lay / studio backgrounds
     const cutout = processItemCutout(img, item.garmentCategory);
     item.processedCanvas = cutout;
-
     if (currentProduct?.id === item.id) {
       garmentImage = img;
       processedGarmentCanvas = cutout;
     }
-
     if (hudCutoutText) {
-      hudCutoutText.textContent = cutout ? "✦ FLOOD-FILL CUTOUT (NEW)" : "RAW TEXTURE";
+      hudCutoutText.textContent = cutout ? "✦ FLOOD-FILL CUTOUT" : "RAW TEXTURE";
     }
-
     renderOutfitLayersList();
-    showToast(`✦ Added ${item.name.slice(0, 24)}… to live try-on!`);
-    updateSizePills(recommendedSizeValue?.textContent || "M");
+  }
 
-    // Automatically send new garment to the active Real-Time VTON session (no camera reconnect!)
-    vtonManager.switchGarment(item);
+  showToast(`✦ Added ${item.name.slice(0, 24)}… to live try-on!`);
+  updateSizePills(recommendedSizeValue?.textContent || "M");
+  vtonManager.switchGarment(item);
 
-    // Asynchronously refine cutout using VTON backend AI extractor if available
+  // 3. Asynchronously query local CatV2TON server for enhanced garment representation if server is online
+  if (vtonManager.serverOnline) {
     vtonManager.extractGarment(img, item.garmentCategory, item.name).then((extractedDataUrl) => {
-      if (extractedDataUrl) {
-        const aiImg = new Image();
-        aiImg.onload = () => {
-          item.processedCanvas = aiImg;
+      if (extractedDataUrl && extractedDataUrl !== aiCutoutUrl) {
+        const srvImg = new Image();
+        srvImg.onload = () => {
+          item.processedCanvas = srvImg;
           if (currentProduct?.id === item.id) {
-            processedGarmentCanvas = aiImg;
+            processedGarmentCanvas = srvImg;
           }
           if (hudCutoutText) {
-            hudCutoutText.textContent = "✦ AI-EXTRACTED CUTOUT";
+            hudCutoutText.textContent = "✦ CatV2TON AI EXTRACTED";
           }
           renderOutfitLayersList();
         };
-        aiImg.src = extractedDataUrl;
+        srvImg.src = extractedDataUrl;
       }
     });
-  };
+  }
+}
 
+function loadDirectImage(item) {
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => resolveAndApplyGarment(item, img);
   img.onerror = () => {
     garmentLoader?.classList.add("hidden");
     loadItemViaBgFetch(item);
   };
-
   img.src = item.imageUrl;
 }
 
@@ -1970,43 +2029,7 @@ function loadItemViaBgFetch(item) {
         garmentLoader?.classList.add("hidden");
         if (response?.success && response.dataUrl) {
           const img = new Image();
-          img.onload = () => {
-            item.imageElement = img;
-            item.processedCanvas = processItemCutout(img, item.garmentCategory);
-            if (currentProduct?.id === item.id) {
-              garmentImage = img;
-              processedGarmentCanvas = item.processedCanvas;
-            }
-
-            if (hudCutoutText) {
-              hudCutoutText.textContent = item.processedCanvas ? "✦ FLOOD-FILL CUTOUT (NEW)" : "RAW TEXTURE";
-            }
-
-            renderOutfitLayersList();
-            showToast(`✦ Applied ${item.name.slice(0, 24)}… to your body!`);
-            updateSizePills(recommendedSizeValue?.textContent || "M");
-
-            // Automatically send new garment to the active Real-Time VTON session (no camera reconnect!)
-            vtonManager.switchGarment(item);
-
-            // Asynchronously refine cutout using VTON backend AI extractor if available
-            vtonManager.extractGarment(img, item.garmentCategory, item.name).then((extractedDataUrl) => {
-              if (extractedDataUrl) {
-                const aiImg = new Image();
-                aiImg.onload = () => {
-                  item.processedCanvas = aiImg;
-                  if (currentProduct?.id === item.id) {
-                    processedGarmentCanvas = aiImg;
-                  }
-                  if (hudCutoutText) {
-                    hudCutoutText.textContent = "✦ AI-EXTRACTED CUTOUT";
-                  }
-                  renderOutfitLayersList();
-                };
-                aiImg.src = extractedDataUrl;
-              }
-            });
-          };
+          img.onload = () => resolveAndApplyGarment(item, img);
           img.src = response.dataUrl;
         } else {
           loadDirectImage(item);

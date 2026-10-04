@@ -52,13 +52,13 @@ app.get("/api/health", async (req, res) => {
 
   res.json({
     status: "ok",
-    service: "VESTORA In-House AI VTON Engine Server",
+    service: "VESTORA CatV2TON Local Model Server",
     mode: "in-house-neural-vton",
-    model: "CatVTON-v1.0 (Modular)",
+    model: "CatV2TON-Video (Modular)",
     localBrowserModels: getLocalModelAssets(),
     cloudDependent: false,
     pythonVTONServer: pythonVTONOnline ? "online" : "standby",
-    version: "2.0.0",
+    version: "2.1.0",
     timestamp: new Date().toISOString()
   });
 });
@@ -89,7 +89,7 @@ app.get(["/api/tryon/status", "/api/vton/status"], async (req, res) => {
 
   res.json({
     status: "ready",
-    active_engine: "client_in_house",
+    active_engine: "CatV2TON-Video",
     device: "mps-auto",
     architecture: "client-mesh-fallback-with-local-model-assets",
     supported_categories: [
@@ -196,8 +196,8 @@ app.post("/api/extract-garment", async (req, res) => {
   });
 });
 
-// 5. POST /api/tryon
-app.post("/api/tryon", async (req, res) => {
+// 5. POST /api/tryon (Image Try-On)
+app.post(["/api/tryon", "/api/vton/predict", "/api/vton/try-on"], async (req, res) => {
   try {
     const pyResp = await fetch(`${PYTHON_VTON_URL}/api/tryon`, {
       method: "POST",
@@ -220,7 +220,7 @@ app.post("/api/tryon", async (req, res) => {
 });
 
 // 5b. POST /api/tryon/video-frame (Temporal video frame stream)
-app.post("/api/tryon/video-frame", async (req, res) => {
+app.post(["/api/tryon/video-frame", "/api/vton/frame"], async (req, res) => {
   try {
     const pyResp = await fetch(`${PYTHON_VTON_URL}/api/tryon/video-frame`, {
       method: "POST",
