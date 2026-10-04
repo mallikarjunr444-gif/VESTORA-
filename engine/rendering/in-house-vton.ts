@@ -79,9 +79,35 @@ export class InHouseVTONEngine {
     } = options;
     this.flipU = !!isMirrored;
 
+    // 0. Align anatomical landmarks with mirrored selfie preview if active
+    let targetLandmarks = landmarks;
+    if (isMirrored) {
+      targetLandmarks = landmarks.map((p) => ({
+        x: canvasWidth - p.x,
+        y: p.y,
+        v: p.v,
+      }));
+      // Swap left and right anatomical landmarks to match mirrored screen geometry
+      const swap = (i: number, j: number) => {
+        if (targetLandmarks[i] && targetLandmarks[j]) {
+          const tmp = targetLandmarks[i];
+          targetLandmarks[i] = targetLandmarks[j];
+          targetLandmarks[j] = tmp;
+        }
+      };
+      swap(1, 2);   // eyes
+      swap(3, 4);   // ears
+      swap(5, 6);   // shoulders
+      swap(7, 8);   // elbows
+      swap(9, 10);  // wrists
+      swap(11, 12); // hips
+      swap(13, 14); // knees
+      swap(15, 16); // ankles
+    }
+
     // 1. Build anatomical deformation mesh anchored to body keypoints
     const { vertices, triangles } = this.buildAnatomicalMesh(
-      landmarks,
+      targetLandmarks,
       canvasWidth,
       canvasHeight,
       fitScale,
@@ -91,22 +117,23 @@ export class InHouseVTONEngine {
     // 2. Apply temporal smoothing (Kalman / EMA filter) to mesh vertices
     const smoothedVertices = this.applyTemporalSmoothing(vertices);
 
-    // 3. Render deformed garment mesh via piecewise affine barycentric triangle warping
+    // 3. Occlude existing shirt underneath, then render deformed garment mesh
     targetCtx.save();
     targetCtx.globalAlpha = Math.max(0.1, Math.min(1.0, fitOpacity));
 
+    this.renderTorsoUnderbase(targetCtx, smoothedVertices);
     this.renderTexturedMesh(targetCtx, garmentImg, smoothedVertices, triangles);
 
     // 4. Photorealistic Ambient Lighting & Fold Transfer
     if (enableLightingTransfer) {
-      this.applyAmbientLightingTransfer(targetCtx, videoEl, smoothedVertices, canvasWidth, canvasHeight);
+      this.applyAmbientLightingTransfer(targetCtx, videoEl, smoothedVertices, canvasWidth, canvasHeight, isMirrored);
     }
 
     targetCtx.restore();
 
     // 5. Dynamic Arm & Hand Occlusion (arms render in front of clothing)
     if (enableArmOcclusion) {
-      this.renderArmOcclusion(targetCtx, videoEl, landmarks, canvasWidth, canvasHeight, isMirrored);
+      this.renderArmOcclusion(targetCtx, videoEl, targetLandmarks, canvasWidth, canvasHeight, isMirrored);
     }
   }
 
@@ -360,6 +387,45 @@ export class InHouseVTONEngine {
   }
 
   /**
+   * Under-base occlusion: Completely erases/hides the user's existing physical shirt
+   * within the clothing region before the new garment is rendered on top.
+   * Keeps face, hair, neck, background, and pants intact.
+   */
+  private renderTorsoUnderbase(
+    ctx: CanvasRenderingContext2D,
+    vertices: MeshVertex[]
+  ): void {
+    if (vertices.length < 25) return;
+    ctx.save();
+    ctx.beginPath();
+    const cols = 5;
+    const rows = 5;
+
+    // Top collar/shoulder line
+    ctx.moveTo(vertices[0].x, vertices[0].y);
+    for (let c = 1; c < cols; c++) {
+      ctx.lineTo(vertices[c].x, vertices[c].y);
+    }
+    // Right flank
+    for (let r = 1; r < rows; r++) {
+      ctx.lineTo(vertices[r * cols + (cols - 1)].x, vertices[r * cols + (cols - 1)].y);
+    }
+    // Bottom hemline
+    for (let c = cols - 2; c >= 0; c--) {
+      ctx.lineTo(vertices[(rows - 1) * cols + c].x, vertices[(rows - 1) * cols + c].y);
+    }
+    // Left flank
+    for (let r = rows - 2; r >= 0; r--) {
+      ctx.lineTo(vertices[r * cols].x, vertices[r * cols].y);
+    }
+    ctx.closePath();
+
+    ctx.fillStyle = "#1e1e1e"; // neutral opaque base to hide user's physical shirt
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /**
    * Ambient room lighting & fold transfer: Extracts webcam shadow/wrinkle gradients
    * and blends them onto the garment for realism under the user's lighting
    */
@@ -368,7 +434,8 @@ export class InHouseVTONEngine {
     videoEl: HTMLVideoElement,
     vertices: MeshVertex[],
     width: number,
-    height: number
+    height: number,
+    isMirrored: boolean = false
   ): void {
     if (!this.tempCanvas || !this.tempCtx || vertices.length < 5) return;
 
@@ -380,8 +447,14 @@ export class InHouseVTONEngine {
     const tCtx = this.tempCtx;
     tCtx.clearRect(0, 0, width, height);
 
-    // Draw webcam feed into temp canvas
+    // Draw webcam feed into temp canvas, mirroring if preview is mirrored
+    tCtx.save();
+    if (isMirrored) {
+      tCtx.translate(width, 0);
+      tCtx.scale(-1, 1);
+    }
     tCtx.drawImage(videoEl, 0, 0, width, height);
+    tCtx.restore();
 
     // Create a path tracing the outer perimeter of the torso mesh
     ctx.save();
@@ -443,10 +516,10 @@ export class InHouseVTONEngine {
     ctx.save();
     // Render arm segment with soft antialiasing
     if (leftArmInFront && lElbow && lWrist) {
-      this.drawOcclusionArmSegment(ctx, videoEl, lElbow, lWrist, width * 0.07);
+      this.drawOcclusionArmSegment(ctx, videoEl, lElbow, lWrist, width * 0.07, isMirrored);
     }
     if (rightArmInFront && rElbow && rWrist) {
-      this.drawOcclusionArmSegment(ctx, videoEl, rElbow, rWrist, width * 0.07);
+      this.drawOcclusionArmSegment(ctx, videoEl, rElbow, rWrist, width * 0.07, isMirrored);
     }
     ctx.restore();
   }
@@ -456,7 +529,8 @@ export class InHouseVTONEngine {
     videoEl: HTMLVideoElement,
     p1: LandmarkPoint,
     p2: LandmarkPoint,
-    thickness: number
+    thickness: number,
+    isMirrored: boolean = false
   ): void {
     const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
     const normal = angle + Math.PI / 2;
@@ -475,6 +549,10 @@ export class InHouseVTONEngine {
     ctx.clip();
 
     // Composite camera video back on top of garment for real arm visibility
+    if (isMirrored) {
+      ctx.translate(ctx.canvas.width, 0);
+      ctx.scale(-1, 1);
+    }
     ctx.drawImage(videoEl, 0, 0, ctx.canvas.width, ctx.canvas.height);
     ctx.restore();
   }
