@@ -143,6 +143,13 @@ html, body {
   border-color: rgba(239, 68, 68, 0.5);
 }
 
+#btn-hd-live.active {
+  background: linear-gradient(135deg, #7c3aed, #9333ea) !important;
+  color: #ffffff !important;
+  border-color: #c084fc !important;
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.6);
+}
+
 /* Mode Switcher: Live Camera vs Uploaded Photo */
 .mode-switcher {
   display: inline-flex;

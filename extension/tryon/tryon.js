@@ -1,5 +1,8 @@
 import { InHouseVTONEngine } from "../../engine/rendering/in-house-vton.js";
 import { RealTimePoseTracker } from "../../engine/tracking/real-time-pose-tracker.js";
+import { PoseTracker } from "../../engine/tracking/mediapipe-pose.js";
+import { cutoutGarment } from "../../engine/garment/segment-cutout.js";
+import { DecartLive } from "../../engine/rendering/decart-live.js";
 
 /**
  * VESTORA — Real-Time Live Virtual Try-On Widget Controller
@@ -15,6 +18,8 @@ import { RealTimePoseTracker } from "../../engine/tracking/real-time-pose-tracke
 
 const inHouseVton = new InHouseVTONEngine();
 const poseTracker = new RealTimePoseTracker();
+const mpPoseTracker = new PoseTracker();
+mpPoseTracker.init();
 
 // ─── Constants: 19 Anatomical Anchor Landmarks ───
 const POSE_LANDMARK = {
@@ -322,6 +327,14 @@ class VestoraInHouseVTONManager {
 
   async extractGarment(imageElement, category, name) {
     if (!imageElement) return null;
+    // 1) On-device multiclass garment segmentation (no server needed)
+    try {
+      const local = await cutoutGarment(imageElement, category || "upper_body");
+      if (local) return local;
+    } catch (e) {
+      console.warn("[VESTORA] Local on-device garment cutout failed, falling back:", e);
+    }
+    // 2) Optional local Python server
     try {
       const canvas = document.createElement("canvas");
       canvas.width = imageElement.naturalWidth || imageElement.width;
@@ -503,6 +516,7 @@ async function setupStream(stream, facingMode) {
   videoEl.srcObject = stream;
   // Mirror only for front camera
   videoEl.style.transform = facingMode === "user" ? "scaleX(-1)" : "scaleX(1)";
+  canvasEl.style.transform = videoEl.style.transform;
 
   await new Promise((resolve) => {
     videoEl.onloadedmetadata = () => {
@@ -595,6 +609,8 @@ function startRenderLoop() {
 
   function frame(timestamp) {
     animationFrameId = requestAnimationFrame(frame);
+    syncHdGarment();
+    if (hdActive) return; // HD Live mode shows Decart's generated video instead
 
     // FPS tracking
     frameCount++;
@@ -611,22 +627,42 @@ function startRenderLoop() {
     if (!videoEl.videoWidth || !videoEl.videoHeight) return;
     if (!isBodyDetected) isBodyDetected = true;
 
-    // Run continuous real-time optical & anatomical body tracking directly on live camera stream
-    const liveTrack = poseTracker.track(videoEl, canvasEl.width, canvasEl.height);
-    const smoothedPose = {
-      landmarks: liveTrack.landmarks,
-      confidence: liveTrack.confidence,
-      timestamp: liveTrack.timestamp,
-      shoulderAngle: liveTrack.shoulderAngle,
-      shoulderWidth: liveTrack.shoulderWidth,
-      torsoCenter: liveTrack.torsoCenter,
-    };
+    // Dual tracking: MediaPipe Tasks Vision with optical tracking fallback
+    let smoothedPose = null;
+    let framingStatus = "ideal";
+    let isPoseDetected = false;
+
+    if (mpPoseTracker && mpPoseTracker.ready) {
+      const mpPose = mpPoseTracker.detect(videoEl);
+      if (mpPose && mpPose.landmarks) {
+        smoothedPose = mpPose;
+        isPoseDetected = true;
+      }
+    }
+
+    if (!smoothedPose) {
+      const liveTrack = poseTracker.track(videoEl, canvasEl.width, canvasEl.height);
+      if (liveTrack && liveTrack.landmarks) {
+        smoothedPose = {
+          landmarks: liveTrack.landmarks,
+          confidence: liveTrack.confidence,
+          timestamp: liveTrack.timestamp,
+          shoulderAngle: liveTrack.shoulderAngle,
+          shoulderWidth: liveTrack.shoulderWidth,
+          torsoCenter: liveTrack.torsoCenter,
+        };
+        framingStatus = liveTrack.framingStatus;
+        isPoseDetected = liveTrack.isDetected;
+      }
+    }
 
     // Update body measurements from continuously tracked pose
-    updateMeasurements(smoothedPose, canvasEl.width, canvasEl.height);
+    if (smoothedPose) {
+      updateMeasurements(smoothedPose, canvasEl.width, canvasEl.height);
+    }
 
     // Live distance guidance & HUD status
-    if (liveTrack.framingStatus === "close_up") {
+    if (framingStatus === "close_up") {
       distanceGuidePill?.classList.remove("hidden");
       if (distanceGuideText) distanceGuideText.textContent = "💡 Sit back slightly for full shirt view";
     } else {
@@ -634,8 +670,9 @@ function startRenderLoop() {
     }
 
     if (hudTrackingText) {
-      if (liveTrack && liveTrack.isDetected) {
-        hudTrackingText.textContent = `✦ REAL-TIME TRACKING (${liveTrack.framingStatus === "close_up" ? "PORTRAIT" : "FULL BODY"})`;
+      if (isPoseDetected) {
+        const mode = (mpPoseTracker && mpPoseTracker.ready) ? "MEDIAPIPE ML" : "OPTICAL 60FPS";
+        hudTrackingText.textContent = `✦ TRACKING: ${framingStatus === "close_up" ? "PORTRAIT" : "FULL BODY"} (${mode})`;
       } else {
         hudTrackingText.textContent = `✦ REAL-TIME TRACKING (SEARCHING BODY)`;
       }
@@ -2271,17 +2308,15 @@ function takeScreenshot() {
   compositeCanvas.height = videoEl.videoHeight || 720;
   const compCtx = compositeCanvas.getContext("2d");
 
-  // Draw background: live camera video
+  // Draw background: live camera video and garment overlay
   compCtx.save();
   if (currentFacing === "user") {
     compCtx.translate(compositeCanvas.width, 0);
     compCtx.scale(-1, 1);
   }
   compCtx.drawImage(videoEl, 0, 0);
-  compCtx.restore();
-
-  // Draw garment overlay
   compCtx.drawImage(canvasEl, 0, 0);
+  compCtx.restore();
 
   // Watermark
   compCtx.save();
@@ -2588,4 +2623,95 @@ if (productParam) {
   // No URL param → try chrome.storage (side panel flow)
   autoLoadProductFromStorage();
 }
-void 0;
+
+// ─── HD Live (Decart realtime lucy-vton, bring-your-own-key) ───
+const decartLive = new DecartLive();
+let hdActive = false;
+let hdBusy = false;
+let hdLastSent = null; // garment canvas/image last sent to Decart
+const btnHdLive = document.getElementById("btn-hd-live");
+const hdKeyModal = document.getElementById("hd-key-modal");
+const hdKeyInput = document.getElementById("hd-key-input");
+const btnHdKeySave = document.getElementById("btn-hd-key-save");
+const btnHdKeyCancel = document.getElementById("btn-hd-key-cancel");
+
+function currentGarmentSource() {
+  return processedGarmentCanvas || garmentImage || currentProduct?.processedCanvas || currentProduct?.imageElement || null;
+}
+
+async function syncHdGarment() {
+  if (!hdActive || hdBusy || !decartLive.connected) return;
+  const src = currentGarmentSource();
+  if (!src || src === hdLastSent) return;
+  hdBusy = true;
+  try {
+    await decartLive.setGarment(src, currentProduct?.garmentCategory || "upper_body");
+    hdLastSent = src;
+  } catch (e) {
+    console.warn("[VESTORA] HD garment update failed:", e);
+    showToast("HD Live: could not send garment — try another image");
+    hdLastSent = src; // do not retry the same bad image every frame
+  } finally {
+    hdBusy = false;
+  }
+}
+
+async function startHdLive(apiKey) {
+  try {
+    showToast("HD Live: connecting…");
+    await decartLive.connect(
+      apiKey,
+      (remote) => {
+        if (vtonVideoEl) {
+          vtonVideoEl.srcObject = remote;
+          vtonVideoEl.classList.add("active");
+        }
+        canvasEl.style.visibility = "hidden";
+      },
+      (err) => {
+        console.error("[VESTORA] Decart error:", err);
+        showToast("HD Live error — see console");
+      }
+    );
+    hdActive = true;
+    btnHdLive?.classList.add("active");
+    showToast("HD Live on (billed to your Decart account)");
+  } catch (e) {
+    console.error("[VESTORA] HD Live failed to start:", e);
+    stopHdLive();
+    showToast("HD Live failed: check your Decart key / credits");
+  }
+}
+
+function stopHdLive() {
+  const { seconds, cost } = decartLive.disconnect();
+  hdActive = false;
+  hdLastSent = null;
+  if (vtonVideoEl) {
+    vtonVideoEl.classList.remove("active");
+    vtonVideoEl.srcObject = null;
+  }
+  canvasEl.style.visibility = "visible";
+  btnHdLive?.classList.remove("active");
+  if (seconds > 1) showToast(`HD Live stopped — ${Math.round(seconds)}s used (~$${cost.toFixed(2)})`);
+}
+
+btnHdLive?.addEventListener("click", async () => {
+  if (hdActive) return stopHdLive();
+  const stored = await chrome.storage?.local?.get?.("vestora_decart_key");
+  if (stored?.vestora_decart_key) return startHdLive(stored.vestora_decart_key);
+  hdKeyModal?.classList.remove("hidden");
+  hdKeyInput?.focus();
+});
+btnHdKeyCancel?.addEventListener("click", () => hdKeyModal?.classList.add("hidden"));
+btnHdKeySave?.addEventListener("click", async () => {
+  const key = hdKeyInput?.value?.trim();
+  if (!key) return;
+  await chrome.storage?.local?.set?.({ vestora_decart_key: key });
+  if (hdKeyInput) hdKeyInput.value = "";
+  hdKeyModal?.classList.add("hidden");
+  startHdLive(key);
+});
+window.addEventListener("beforeunload", () => {
+  if (hdActive) decartLive.disconnect();
+});
