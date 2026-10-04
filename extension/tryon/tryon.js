@@ -2373,8 +2373,8 @@ async function grabProductFromCurrentTab() {
         showToast(`✦ Grabbed "${resp.product.name.slice(0, 24)}…" from page!`);
       } else {
         // Fallback: check storage for active product
-        chrome.storage?.local?.get(["vestora:active_product"], (data) => {
-          const prod = data?.["vestora:active_product"];
+        chrome.storage?.local?.get(["vestora_active_product"], (data) => {
+          const prod = data?.["vestora_active_product"];
           if (prod && prod.imageUrl) {
             loadProduct(prod);
             showToast(`✦ Loaded garment: "${prod.name.slice(0, 24)}…"`);

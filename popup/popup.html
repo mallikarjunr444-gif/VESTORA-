@@ -8,38 +8,53 @@
 </head>
 <body>
   <div class="popup-container">
-    <!-- Header with Official VESTORA Logo & Tagline -->
+    <!-- Header with VESTORA Brand -->
     <header class="popup-header">
-      <img src="../assets/logo/vestora-logo.png" alt="VESTORA" class="brand-logo" />
-      <p class="brand-tagline">Wear What You Imagine.</p>
+      <div class="brand-row">
+        <div class="brand-icon">✦</div>
+        <div>
+          <div class="brand-name">VESTORA</div>
+          <div class="brand-tagline">Wear What You Imagine.</div>
+        </div>
+        <div class="live-badge">LIVE</div>
+      </div>
     </header>
+
+    <!-- Detected Product Preview Card (shown when garment detected) -->
+    <div id="product-preview-card" class="product-preview-card hidden">
+      <img id="product-preview-thumb" class="product-preview-thumb" src="" alt="Product" />
+      <div class="product-preview-info">
+        <div id="product-preview-name" class="product-preview-name">Detected Item</div>
+        <div id="product-preview-cat" class="product-preview-cat">Fashion Item</div>
+      </div>
+      <div class="product-preview-tag">✦ Ready</div>
+    </div>
 
     <!-- Primary Action: Try Current Product & Side Panel -->
     <section class="action-section">
       <button id="btn-try-product" class="btn-primary" type="button">
         <span class="btn-sparkle">✦</span>
-        <span id="btn-try-text">Try Current Product</span>
+        <span id="btn-try-text">Open Live Try-On</span>
       </button>
       <div class="secondary-actions">
         <button id="btn-open-sidepanel" class="btn-secondary" type="button" title="Open side-by-side with shopping website">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/></svg>
-          <span>Open Side Panel</span>
+          <span>Side Panel</span>
         </button>
         <button id="btn-open-window" class="btn-secondary" type="button" title="Open in separate pop-out window">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           <span>Pop-out</span>
         </button>
       </div>
-      <p id="detected-product-name" class="detected-product-label">No clothing selected yet</p>
+      <p id="detected-product-name" class="detected-product-label">Hover garments on any page to try on</p>
       <div class="drag-hint-box">
         <span class="drag-hint-icon">✨</span>
         <span class="drag-hint-text">Drag any garment image into the live try-on to wear it instantly!</span>
       </div>
     </section>
 
-    <!-- Status Grid (PRD Section 13) -->
+    <!-- Status Grid -->
     <section class="status-grid">
-      <!-- Camera Status -->
       <div class="status-card">
         <div class="status-title">Camera</div>
         <div class="status-value status-ready">
@@ -47,27 +62,25 @@
           <span id="camera-status-text">Ready</span>
         </div>
       </div>
-
-      <!-- Performance Status -->
       <div class="status-card">
-        <div class="status-title">Performance</div>
+        <div class="status-title">AI Engine</div>
         <div class="status-value status-good">
           <span class="status-dot dot-purple"></span>
-          <span id="perf-status-text">Good</span>
+          <span id="perf-status-text">100% Local</span>
         </div>
       </div>
     </section>
 
-    <!-- Privacy Banner (PRD Section 13 & 25) -->
+    <!-- Privacy Banner -->
     <section class="privacy-card">
       <div class="privacy-header">
         <span class="privacy-icon">🔒</span>
-        <span class="privacy-title">Privacy</span>
+        <span class="privacy-title">100% Private</span>
       </div>
-      <p class="privacy-text">Your camera stays on your device. VESTORA processes video locally.</p>
+      <p class="privacy-text">Camera stays on your device. No video uploads. Zero cloud processing.</p>
     </section>
 
-    <!-- Settings Accordion / Drawer (PRD Section 37) -->
+    <!-- Settings Accordion -->
     <details class="settings-drawer">
       <summary class="settings-summary">
         <span>Settings</span>
@@ -99,9 +112,9 @@
     </details>
 
     <footer class="popup-footer">
-      <span>VESTORA v1.0.0</span>
+      <span>VESTORA v1.0</span>
       <span class="footer-dot">·</span>
-      <span>Manifest V3 Foundation</span>
+      <span>AI-Powered Virtual Try-On</span>
     </footer>
   </div>
 

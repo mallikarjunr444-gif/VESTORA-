@@ -86,7 +86,8 @@ const logger = new Logger("ProductDetector");
       confidence: 1.0,
       detectionSource: "dom-heuristic" as const,
     };
-    handleTryOnClick(prod);
+    openVestoraPanel(prod);
+    showPageToast(`✦ VESTORA Live Try-On ready!`);
   });
 
   const intersectionObserver = new IntersectionObserver(
@@ -208,18 +209,19 @@ const logger = new Logger("ProductDetector");
     logger.info("User requested try-on for:", product.name);
     activeProduct = product;
 
-    // Open VESTORA Side-Left Live Try-On Popup Window
-    const message: ExtensionMessage<Product> = {
-      type: "VESTORA_OPEN_WINDOW",
+    // Primary: Open VESTORA In-Page Shadow DOM Panel (no navigation, stays on shopping site)
+    openVestoraPanel(product);
+
+    // Also notify background service worker to store active product
+    chrome.runtime.sendMessage({
+      type: "VESTORA_PRODUCT_DETECTED",
       payload: product,
-    };
-    chrome.runtime.sendMessage(message).catch((err) => {
-      logger.warn("Could not open try-on window:", err);
-    });
+    }).catch(() => {});
 
     // Show a brief toast on the page so user knows try-on is launching
-    showPageToast(`✦ VESTORA Live Try-On opening…`);
+    showPageToast(`✦ VESTORA Live Try-On ready!`);
   }
+
 
   function showPageToast(msg: string) {
     const toast = document.createElement("div");
@@ -267,19 +269,28 @@ const logger = new Logger("ProductDetector");
       logger.info("Received request to open try-on from popup/action");
       const prod = activeProduct || getHeroProduct();
       if (prod) {
-        handleTryOnClick(prod);
+        openVestoraPanel(prod);
+        showPageToast(`✦ VESTORA Live Try-On ready!`);
         sendResponse?.({ success: true, product: prod });
       } else {
-        const images = Array.from(document.querySelectorAll<HTMLImageElement>("img"));
-        for (const img of images) {
-          if (isCandidateFashionImage(img)) {
-            const imageUrl = extractBestImageUrl(img);
-            const product = extractProductFromElement(img, imageUrl);
-            handleTryOnClick(product);
-            sendResponse?.({ success: true, product });
-            break;
-          }
-        }
+        // No product detected — open panel with sample garments
+        const emptyProduct: Product = {
+          id: `prod_popup_${Date.now()}`,
+          name: "Browse & Try Fashion",
+          brand: location.hostname.replace("www.", "").split(".")[0].toUpperCase(),
+          imageUrl: "",
+          productUrl: location.href,
+          pageUrl: location.href,
+          category: "upper_body",
+          isFashion: true,
+          availableSizes: ["S", "M", "L", "XL"],
+          outOfStockSizes: [],
+          confidence: 1.0,
+          detectionSource: "dom-heuristic" as const,
+        };
+        openVestoraPanel(emptyProduct);
+        showPageToast(`✦ VESTORA ready — hover any garment image!`);
+        sendResponse?.({ success: true, product: emptyProduct });
       }
       return false;
     }

@@ -1,6 +1,6 @@
 /**
  * VESTORA — Extension Popup Controller
- * Manages camera status display, performance indicators, settings persistence, and try-on trigger (PRD Section 13).
+ * Manages camera status display, performance indicators, settings persistence, and try-on trigger.
  */
 
 import { DEFAULT_SETTINGS, STORAGE_KEYS } from "../../shared/constants/index.js";
@@ -14,6 +14,12 @@ const btnOpenWindow = document.getElementById("btn-open-window") as HTMLButtonEl
 const detectedProductLabel = document.getElementById("detected-product-name") as HTMLParagraphElement;
 const cameraStatusText = document.getElementById("camera-status-text") as HTMLSpanElement;
 const perfStatusText = document.getElementById("perf-status-text") as HTMLSpanElement;
+
+// Product Preview Card
+const productPreviewCard = document.getElementById("product-preview-card") as HTMLElement;
+const productPreviewThumb = document.getElementById("product-preview-thumb") as HTMLImageElement;
+const productPreviewName = document.getElementById("product-preview-name") as HTMLElement;
+const productPreviewCat = document.getElementById("product-preview-cat") as HTMLElement;
 
 // Settings Toggles
 const toggleAutoDetect = document.getElementById("toggle-autodetect") as HTMLInputElement;
@@ -36,10 +42,9 @@ async function initPopup(): Promise<void> {
   if (togglePrivacy) togglePrivacy.checked = settings.privacyLocalOnly;
   if (selectPerfMode) selectPerfMode.value = settings.performanceMode;
 
-  // Update product readout
-  if (activeProduct && detectedProductLabel && btnTryText) {
-    detectedProductLabel.textContent = `✦ ${activeProduct.name}`;
-    btnTryText.textContent = `Try "${activeProduct.name.slice(0, 18)}…"`;
+  // Update product readout from storage or active tab
+  if (activeProduct && activeProduct.imageUrl) {
+    showProductPreview(activeProduct);
   } else {
     // Dynamically query active tab for page garment
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
@@ -47,12 +52,7 @@ async function initPopup(): Promise<void> {
         chrome.tabs.sendMessage(tab.id, { type: "VESTORA_REQUEST_PAGE_PRODUCT" }).then((resp) => {
           if (resp?.success && resp.product) {
             activeProduct = resp.product;
-            if (detectedProductLabel && activeProduct) {
-              detectedProductLabel.textContent = `✦ ${activeProduct.name}`;
-            }
-            if (btnTryText && activeProduct) {
-              btnTryText.textContent = `Try "${activeProduct.name.slice(0, 18)}…"`;
-            }
+            showProductPreview(activeProduct!);
           }
         }).catch(() => {});
       }
@@ -69,35 +69,66 @@ async function initPopup(): Promise<void> {
   setupListeners();
 }
 
+// ── Show product preview card ──
+function showProductPreview(product: Product): void {
+  if (!product) return;
+
+  if (productPreviewCard) productPreviewCard.classList.remove("hidden");
+
+  if (productPreviewThumb && product.imageUrl) {
+    productPreviewThumb.src = product.imageUrl;
+    productPreviewThumb.style.display = "block";
+    productPreviewThumb.onerror = () => {
+      if (productPreviewThumb) productPreviewThumb.style.display = "none";
+    };
+  }
+
+  if (productPreviewName) {
+    productPreviewName.textContent = product.name || "Fashion Item";
+  }
+
+  if (productPreviewCat) {
+    productPreviewCat.textContent = product.category || "Apparel";
+  }
+
+  if (detectedProductLabel) {
+    detectedProductLabel.textContent = `✦ ${product.name}`;
+  }
+
+  if (btnTryText) {
+    const shortName = product.name.slice(0, 22);
+    btnTryText.textContent = `Try "${shortName}${product.name.length > 22 ? '…' : ''}"`;
+  }
+}
+
 // ── 2. Check Device Camera Status ──
 async function checkCameraCapabilities(): Promise<void> {
   try {
     if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoInputs = devices.filter((d) => d.kind === "videoinput");
-      if (videoInputs.length > 0) {
-        cameraStatusText.textContent = "Ready";
-      } else {
-        cameraStatusText.textContent = "No Camera";
+      if (cameraStatusText) {
+        cameraStatusText.textContent = videoInputs.length > 0 ? "Ready" : "No Camera";
       }
     } else {
-      cameraStatusText.textContent = "Supported";
+      if (cameraStatusText) cameraStatusText.textContent = "Supported";
     }
   } catch {
-    cameraStatusText.textContent = "Ready";
+    if (cameraStatusText) cameraStatusText.textContent = "Ready";
   }
 }
 
 function updatePerformanceIndicator(mode: ExtensionSettings["performanceMode"]): void {
-  if (mode === "high") perfStatusText.textContent = "60 FPS (High)";
-  else if (mode === "balanced") perfStatusText.textContent = "30 FPS (Balanced)";
+  if (!perfStatusText) return;
+  if (mode === "high") perfStatusText.textContent = "60 FPS";
+  else if (mode === "balanced") perfStatusText.textContent = "30 FPS";
   else if (mode === "low") perfStatusText.textContent = "Lite Mode";
-  else perfStatusText.textContent = "Adaptive";
+  else perfStatusText.textContent = "100% Local";
 }
 
 // ── 3. Listeners & Settings Persistence ──
 function setupListeners(): void {
-  // Try Current Product button
+  // Try Current Product button — opens in-page panel
   btnTryProduct?.addEventListener("click", async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.id) {
@@ -111,34 +142,27 @@ function setupListeners(): void {
   btnOpenSidepanel?.addEventListener("click", async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.windowId && (chrome as any).sidePanel?.open) {
-      (chrome as any).sidePanel.open({ windowId: tab.windowId }).catch(() => {
+      (chrome as any).sidePanel.open({ windowId: tab.windowId }).then(() => {
+        // After side panel opens, send product to it
+        if (activeProduct) {
+          chrome.runtime.sendMessage({
+            type: "VESTORA_OPEN_SIDEPANEL",
+            payload: activeProduct,
+          }).catch(() => {});
+        }
+      }).catch(() => {
         // Fallback to window
-        chrome.windows.create({
-          url: chrome.runtime.getURL(`tryon/tryon.html${activeProduct ? "?product=" + encodeURIComponent(JSON.stringify(activeProduct)) : ""}`),
-          type: "popup",
-          width: 480,
-          height: 820,
-        });
+        openTryOnWindow();
       });
     } else {
-      chrome.windows.create({
-        url: chrome.runtime.getURL(`tryon/tryon.html${activeProduct ? "?product=" + encodeURIComponent(JSON.stringify(activeProduct)) : ""}`),
-        type: "popup",
-        width: 480,
-        height: 820,
-      });
+      openTryOnWindow();
     }
     window.close();
   });
 
   // Open Dedicated Pop-out Window
   btnOpenWindow?.addEventListener("click", () => {
-    chrome.windows.create({
-      url: chrome.runtime.getURL(`tryon/tryon.html${activeProduct ? "?product=" + encodeURIComponent(JSON.stringify(activeProduct)) : ""}`),
-      type: "popup",
-      width: 480,
-      height: 820,
-    });
+    openTryOnWindow();
     window.close();
   });
 
@@ -163,6 +187,20 @@ function setupListeners(): void {
   toggleOverlay?.addEventListener("change", saveSettings);
   togglePrivacy?.addEventListener("change", saveSettings);
   selectPerfMode?.addEventListener("change", saveSettings);
+}
+
+function openTryOnWindow(): void {
+  const productParam = activeProduct
+    ? `?product=${encodeURIComponent(JSON.stringify(activeProduct))}`
+    : "";
+  chrome.windows.create({
+    url: chrome.runtime.getURL(`tryon/tryon.html${productParam}`),
+    type: "popup",
+    width: 480,
+    height: 840,
+    left: 20,
+    top: 60,
+  });
 }
 
 document.addEventListener("DOMContentLoaded", initPopup);

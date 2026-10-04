@@ -18,6 +18,4 @@ export class BaselineGarmentExtractor implements GarmentExtractor {
       metadata: {
         extractedAt: Date.now(),
       },
-    };
-  }
-}
+    }
